@@ -1,10 +1,19 @@
 """CalDAV calendar store (Nextcloud, SOGo, Radicale, ...).
 
-Speaks the three requests it needs directly over Home Assistant's async HTTP
-session instead of using the `caldav` library: HA core is moving that
-library from 2.x to 3.x, and owning REPORT/PUT/DELETE is less code than
-wrapping two major versions. Parsing runs in the executor; network I/O is
-async.
+Speaks the three requests it needs directly over an async HTTP session
+instead of using the `caldav` library: HA core is moving that library from
+2.x to 3.x, and owning REPORT/PUT/DELETE is less code than wrapping two
+major versions. Parsing runs in the executor; network I/O is async.
+
+SESSION. One session per Home Assistant instance, WITHOUT cookies, shared
+by every CalDAV store and the config flow. HA's shared session keeps a
+cookie jar, and Nextcloud answers Basic auth with session cookies
+(nc_session_id and others). Sent back, those cookies win over the
+Authorization header: after one request as user A, a request with user B's
+app password was still served as A (HTTP 404 on B's calendar). With no
+cookie jar, Basic auth on each request is the only identity the server
+sees. The session uses HA's connector (TLS verified) and is closed by HA
+on shutdown.
 
 READ. One REPORT calendar-query on the collection returns every VEVENT
 resource with its href and ETag. A resource that does not parse is skipped
@@ -26,10 +35,12 @@ from urllib.parse import quote, urljoin
 from xml.etree import ElementTree as ET
 
 import aiohttp
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.util.hass_dict import HassKey
 from icalendar import Calendar, Event
 
+from ..const import DOMAIN
 from ..ical import events
 from . import Diff, Snapshot, StoreAuthError, StoreError, diff, fingerprints, group
 
@@ -48,6 +59,18 @@ REPORT_BODY = (
     b"</c:comp-filter></c:filter>"
     b"</c:calendar-query>"
 )
+
+DATA_SESSION: HassKey[aiohttp.ClientSession] = HassKey(f"{DOMAIN}_caldav_session")
+
+
+@callback
+def async_get_caldav_session(hass: HomeAssistant) -> aiohttp.ClientSession:
+    """The cookieless CalDAV session for this hass, created on first use."""
+    session = hass.data.get(DATA_SESSION)
+    if session is None or session.closed:
+        session = async_create_clientsession(hass, cookie_jar=aiohttp.DummyCookieJar())
+        hass.data[DATA_SESSION] = session
+    return session
 
 
 class CalDavNotCalendarError(StoreError):
@@ -218,9 +241,9 @@ class CalDavStore:
 
     @property
     def session(self) -> aiohttp.ClientSession:
-        """HA's shared client session (verifies TLS)."""
+        """The cookieless CalDAV session (verifies TLS), see module doc."""
         if self._session is None:
-            self._session = async_get_clientsession(self.hass)
+            self._session = async_get_caldav_session(self.hass)
         return self._session
 
     async def _request(
