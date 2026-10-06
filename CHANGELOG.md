@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0
+
+* New accept policy "If the time is free": accept an invitation when
+  nothing else takes that time, decline it when something does. Only
+  timed events block (not all day, free or cancelled ones), first come
+  first served. A declined event is left out of the calendar. For a
+  recurring series only the clashing dates in the coming year are
+  declined, each with its own reply, and left out.
+* Declined replies that could not be sent are retried every poll.
+* Diagnostics count declined invitations and unsent declines.
+
 ## 1.0.1 (2026-10-06)
 
 Security and robustness fixes. No configuration changes needed.

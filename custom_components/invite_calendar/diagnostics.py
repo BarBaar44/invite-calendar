@@ -103,5 +103,9 @@ async def async_get_config_entry_diagnostics(
             "sent_threads": len(state.sent),
             "rsvp_failed": len(state.rsvp_failed),
             "pending_invites": len(state.pending),
+            "declined": len(state.declined),
+            "declines_unsent": sum(
+                len(r.get("unsent", [])) for r in state.declined.values()
+            ),
         },
     }

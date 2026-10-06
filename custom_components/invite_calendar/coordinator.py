@@ -12,9 +12,11 @@ Same order as the pyscript app (reference/calendar_mailbox.py _poll_one):
    committed, so the next poll retries
 6. flag processed messages
 7. commit state (organizer, failed), forget cancelled and pruned UIDs
-8. missing location replies for new or changed invites (option)
-9. RSVP scan per accept policy; "accepted" written after a confirmed send
-10. fire invite_calendar_updated / invite_calendar_invite_received
+8. policy if_free: accept or decline (see freebusy.py); declined events and
+   occurrences are taken out of the calendar with a second save
+9. missing location replies for new or changed invites (option)
+10. RSVP scan per accept policy; "accepted" written after a confirmed send
+11. fire invite_calendar_updated / invite_calendar_invite_received
 
 Replies are sent only after the save succeeded, so a message that is
 retried never produces a second reply.
@@ -50,7 +52,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 from icalendar import Calendar
 
+from . import freebusy
 from .const import (
+    ACCEPT_IF_FREE,
     DOMAIN,
     EVENT_INVITE_RECEIVED,
     EVENT_UPDATED,
@@ -73,6 +77,18 @@ from .outbound import (
 from .replies import rsvp_candidates
 from .state import EntryState, StateStore
 from .store import Diff, StoreAuthError, StoreBackend, StoreError
+
+
+def merge_diffs(first: Diff, second: Diff) -> Diff:
+    """Net effect of two saves in a row (e.g. an invite added, then left out
+    again because it was declined: no change at all)."""
+    removed2 = set(second.removed)
+    added = (set(first.added) - removed2) | (set(second.added) - set(first.removed))
+    updated = (set(first.updated) | set(second.updated)) - added - removed2
+    updated |= set(second.added) & set(first.removed)
+    removed = (set(first.removed) - set(second.added)) | (removed2 - set(first.added))
+    return Diff(added=sorted(added), updated=sorted(updated), removed=sorted(removed))
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -139,6 +155,10 @@ def process_messages(
         state.organizer.update(result.organizers)
         state.forget(result.cancelled)
         outcome.received.extend(result.received)
+
+    # if_free: a resent copy of a declined invitation stays out, a declined
+    # occurrence keeps its EXDATE (also catches up after a failed save).
+    freebusy.apply_declines(cal, state)
 
     if retention_cutoff is not None:
         only = set(state.organizer) if managed_only else None
@@ -275,6 +295,8 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
                 notification_id=f"{DOMAIN}_{self.config_entry.entry_id}_bad_message",
             )
 
+        if self.options.accept_policy == ACCEPT_IF_FREE:
+            cal, changes = await self._async_free_scan(cal, changes)
         await self._async_missing_location_replies(changes, outcome)
         await self._async_rsvp_scan(cal)
         await self._async_resend_pending(cal)
@@ -335,7 +357,7 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
                     invite.uid,
                 )
 
-    async def _async_send_accept(self, component) -> None:
+    async def _async_send_accept(self, component, partstat: str = "ACCEPTED") -> None:
         opts = self.options
         await self._async_send(
             smtp.build_accept_reply,
@@ -344,7 +366,158 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
             opts.attendee_cn,
             events.get_organizer_email(component),
             component,
+            events.PRODID,
+            None,
+            partstat,
         )
+
+    async def _async_free_scan(
+        self, cal: Calendar, changes: Diff
+    ) -> tuple[Calendar, Diff]:
+        """Policy if_free: accept what is free, decline what clashes, then
+        take the declined events and occurrences out of the calendar.
+
+        Each reply is recorded only after the mail server took it. A
+        transient send failure stops the scan; the next poll decides again.
+        DECLINED replies for single occurrences are queued in the state
+        (`unsent`) and retried every poll, because the series itself is
+        already accepted and won't be decided again."""
+        name = self.config_entry.title
+        decisions = await self.hass.async_add_executor_job(
+            freebusy.decide, cal, self.state, self.options.address, dt_util.now()
+        )
+        dirty = False
+        touched = False
+        for decision in decisions:
+            uid, seq = decision.uid, decision.sequence
+            if decision.decline_whole:
+                try:
+                    await self._async_send_accept(decision.component, "DECLINED")
+                except smtp.SmtpRefusedError as err:
+                    _LOGGER.error(
+                        "[%s] decline for %s refused, leaving it out anyway: %s",
+                        name,
+                        uid,
+                        err,
+                    )
+                except smtp.SmtpError as err:
+                    _LOGGER.warning(
+                        "[%s] decline for %s not sent, retrying next poll: %s",
+                        name,
+                        uid,
+                        err,
+                    )
+                    break
+                end = freebusy.event_end(decision.component)
+                self.state.declined[uid] = {
+                    "sequence": seq,
+                    "whole": True,
+                    "until": end.timestamp() if end is not None else None,
+                }
+                dirty = touched = True
+                _LOGGER.info(
+                    "[%s] declined %s (sequence %s): time taken", name, uid, seq
+                )
+                continue
+
+            try:
+                await self._async_send_accept(decision.component)
+            except smtp.SmtpRefusedError as err:
+                _LOGGER.error(
+                    "[%s] RSVP for %s refused, not retrying: %s", name, uid, err
+                )
+                self.state.rsvp_failed[uid] = seq
+                dirty = True
+                continue
+            except smtp.SmtpError as err:
+                _LOGGER.warning(
+                    "[%s] RSVP for %s not sent, retrying next poll: %s", name, uid, err
+                )
+                break
+            self.state.accepted[uid] = seq
+            self.state.rsvp_failed.pop(uid, None)
+            dirty = True
+            _LOGGER.info("[%s] accepted %s (sequence %s)", name, uid, seq)
+            # A record from an earlier version no longer applies.
+            self.state.declined.pop(uid, None)
+            if decision.declined_occurrences:
+                isos = [
+                    events.aware(rid).isoformat()
+                    for rid in decision.declined_occurrences
+                ]
+                self.state.declined[uid] = {
+                    "sequence": seq,
+                    "whole": False,
+                    "occurrences": isos,
+                    "unsent": list(isos),
+                }
+                touched = True
+                _LOGGER.info(
+                    "[%s] declining %s occurrence(s) of %s: time taken",
+                    name,
+                    len(isos),
+                    uid,
+                )
+        if dirty:
+            await self._state_store.async_save(self.state)
+
+        if touched:
+            try:
+                fresh, snapshot = await self.store.async_load()
+                await self.hass.async_add_executor_job(
+                    freebusy.apply_declines, fresh, self.state
+                )
+                second = await self.store.async_save(fresh, snapshot)
+            except StoreError as err:
+                _LOGGER.warning(
+                    "[%s] declined events stay in the calendar until the next "
+                    "poll, store failed: %s",
+                    name,
+                    err,
+                )
+            else:
+                cal, changes = fresh, merge_diffs(changes, second)
+
+        await self._async_send_unsent_declines(cal)
+        return cal, changes
+
+    async def _async_send_unsent_declines(self, cal: Calendar) -> None:
+        """DECLINED replies for single occurrences that did not go out yet."""
+        name = self.config_entry.title
+        dirty = False
+        for uid, record in self.state.declined.items():
+            if not record.get("unsent"):
+                continue
+            master = events.find_event(cal, uid)
+            if master is None or int(master.get("SEQUENCE", 0)) != record["sequence"]:
+                record["unsent"] = []  # gone or a newer version: decided again
+                dirty = True
+                continue
+            for iso in list(record["unsent"]):
+                rid = datetime.datetime.fromisoformat(iso).astimezone(datetime.UTC)
+                try:
+                    await self._async_send_accept(
+                        freebusy.occurrence_stub(master, rid), "DECLINED"
+                    )
+                except smtp.SmtpRefusedError as err:
+                    _LOGGER.error(
+                        "[%s] decline for %s on %s refused: %s", name, uid, iso, err
+                    )
+                except smtp.SmtpError as err:
+                    _LOGGER.warning(
+                        "[%s] decline for %s on %s not sent, retrying next poll: %s",
+                        name,
+                        uid,
+                        iso,
+                        err,
+                    )
+                    if dirty:
+                        await self._state_store.async_save(self.state)
+                    return
+                record["unsent"].remove(iso)
+                dirty = True
+        if dirty:
+            await self._state_store.async_save(self.state)
 
     async def _async_rsvp_scan(self, cal: Calendar) -> None:
         """Accept every managed event the policy allows, once per sequence."""

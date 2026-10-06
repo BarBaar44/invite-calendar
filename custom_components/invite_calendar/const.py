@@ -51,12 +51,18 @@ ACCEPT_IF_LOCATION: Final = "if_location"
 # Only the accept_event service accepts: a consumer gates acceptance on its
 # own check (the EV project: once the location geocodes).
 ACCEPT_MANUAL: Final = "manual"
+# Accept when the time is free, decline (the clashing occurrences) when not.
+ACCEPT_IF_FREE: Final = "if_free"
 ACCEPT_POLICIES: Final = (
     ACCEPT_NEVER,
     ACCEPT_ALWAYS,
     ACCEPT_IF_LOCATION,
+    ACCEPT_IF_FREE,
     ACCEPT_MANUAL,
 )
+# if_free checks the occurrences of a series this far ahead, once, when the
+# invitation arrives.
+FREE_HORIZON: Final = timedelta(days=365)
 
 DEFAULT_SMTP_PORT: Final = 587
 DEFAULT_MISSING_LOCATION_TEXT: Final = (
