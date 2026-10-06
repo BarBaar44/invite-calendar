@@ -300,7 +300,7 @@
           "attendee_cn": "Name in replies"
         },
         "data_description": {
-          "accept_policy": "Never: no replies. Always: accept every invitation. If it has a location: accept once a location is set. Manual: only the accept_event action accepts, so an automation decides.",
+          "accept_policy": "Never: no replies. Always: accept every invitation. If it has a location: accept once a location is set. If the time is free: accept, or decline when something already takes that time (for a series only the clashing dates). Manual: only the accept_event action accepts, so an automation decides.",
           "missing_location_reply": "Email the organizer of an invitation without a location.",
           "missing_location_text": "One sentence, included in that email.",
           "retention_days": "0 keeps everything. On a CalDAV calendar only events that arrived by mail are ever removed.",
@@ -337,6 +337,7 @@
         "never": "Never",
         "always": "Always",
         "if_location": "If it has a location",
+        "if_free": "If the time is free",
         "manual": "Manual (accept_event action)"
       }
     }

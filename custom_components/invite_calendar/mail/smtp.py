@@ -182,10 +182,12 @@ def build_accept_reply(
     source: Event,
     prodid: str = events.PRODID,
     original: OriginalMessage | None = None,
+    partstat: str = "ACCEPTED",
 ) -> Message:
     """A minimal REPLY per RFC 5546: same UID and SEQUENCE, DTSTAMP, the
     original ORGANIZER and exactly ONE ATTENDEE, ours. The event itself is
-    deliberately not echoed back."""
+    deliberately not echoed back. `partstat` ACCEPTED or DECLINED; with a
+    RECURRENCE-ID on `source` it answers that one occurrence."""
     reply = Event()
     reply.add("uid", str(source.get("UID")))
     reply.add("dtstamp", dt_util.utcnow())
@@ -200,7 +202,7 @@ def build_accept_reply(
         reply.add("summary", str(summary))
     attendee = vCalAddress(f"mailto:{attendee_addr}")
     attendee.params["CN"] = vText(attendee_cn)
-    attendee.params["PARTSTAT"] = vText("ACCEPTED")
+    attendee.params["PARTSTAT"] = vText(partstat)
     attendee.params["ROLE"] = vText("REQ-PARTICIPANT")
     reply.add("attendee", attendee, encode=0)
 
@@ -216,9 +218,15 @@ def build_accept_reply(
         _LOGGER.debug("Could not add missing timezones", exc_info=True)
 
     event_summary = str(source.get("SUMMARY", "your invitation"))
-    body = f'{attendee_cn} has accepted "{event_summary}".\n\n{from_name} (automated)'
+    verb, label = (
+        ("declined", "Declined") if partstat == "DECLINED" else ("accepted", "Accepted")
+    )
+    what = f'"{event_summary}"'
+    if rid is not None:
+        what += f" on {human_start(rid.dt)}"
+    body = f"{attendee_cn} has {verb} {what}.\n\n{from_name} (automated)"
     outer = MIMEMultipart("mixed")
-    outer["Subject"] = f"Accepted: {event_summary}"
+    outer["Subject"] = f"{label}: {event_summary}"
     _headers(outer, cfg, from_name, attendee_addr, organizer_addr)
     outer["Reply-To"] = attendee_addr
     _thread(outer, original)

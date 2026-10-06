@@ -300,7 +300,7 @@
           "attendee_cn": "Naam in antwoorden"
         },
         "data_description": {
-          "accept_policy": "Nooit: geen antwoorden. Altijd: elke uitnodiging accepteren. Als er een locatie is: accepteren zodra er een locatie is. Handmatig: alleen de accept_event actie accepteert, zodat een automatisering beslist.",
+          "accept_policy": "Nooit: geen antwoorden. Altijd: elke uitnodiging accepteren. Als er een locatie is: accepteren zodra er een locatie is. Als de tijd vrij is: accepteren, of afwijzen als er al iets op dat moment staat (bij een reeks alleen de botsende data). Handmatig: alleen de accept_event actie accepteert, zodat een automatisering beslist.",
           "missing_location_reply": "Mail de organisator van een uitnodiging zonder locatie.",
           "missing_location_text": "Eén zin, opgenomen in die mail.",
           "retention_days": "0 bewaart alles. In een CalDAV agenda worden alleen afspraken verwijderd die per mail binnenkwamen.",
@@ -337,6 +337,7 @@
         "never": "Nooit",
         "always": "Altijd",
         "if_location": "Als er een locatie is",
+        "if_free": "Als de tijd vrij is",
         "manual": "Handmatig (accept_event actie)"
       }
     }

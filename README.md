@@ -73,7 +73,7 @@ Settings, Devices & services, Invite Calendar, the entry, **Configure**.
 
 | Option | Default | What it does |
 |---|---|---|
-| Accept invitations | Never | Never, Always, If it has a location, or Manual (only the `accept_event` action accepts, so an automation decides) |
+| Accept invitations | Never | Never, Always, If it has a location, If the time is free (see below), or Manual (only the `accept_event` action accepts, so an automation decides) |
 | Ask for a missing location | off | Email the organizer of an invitation without a location, with your sentence on why it matters |
 | Remove events after | 30 days (.ics), 0 (CalDAV) | 0 keeps everything; on CalDAV only events that arrived by mail are ever removed |
 | Only read mail from the last | 14 days | Mail that arrived earlier is left alone (IMAP `SINCE`, whole days); 0 reads the whole folder |
@@ -83,6 +83,27 @@ Settings, Devices & services, Invite Calendar, the entry, **Configure**.
 
 Replies are sent as the mailbox address, so it must be an email address.
 Saving options that send mail tests the SMTP login first.
+
+### If the time is free
+
+With this policy every invitation is checked against what is already in
+the calendar:
+
+* Only timed events take up time. All day events, events marked free and
+  cancelled events never cause a decline.
+* First come, first served: events made by hand, events the calendar
+  organizes and invitations already accepted block a newer invitation.
+  Something added later never turns an acceptance into a decline.
+* A single event that clashes gets a "declined" reply and is left out of
+  the calendar.
+* A recurring series is accepted; each date that clashes within the next
+  year gets its own "declined" reply and is left out of the calendar.
+  Dates further ahead are not checked.
+* When the organizer sends a new version (for example a different time),
+  it is checked again.
+
+Mail clients differ in how they show a declined single date of a series;
+Nextcloud and SOGo show it, check yours.
 
 An acceptance is sent once per series (not per occurrence) and again only
 when the organizer changes the event. It is recorded only after the mail

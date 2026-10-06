@@ -195,3 +195,34 @@ async def test_mail_never_changes_a_hand_made_event(
     assert caldav_server.resources[dentist] == before
     assert caldav_entry.runtime_data.state.organizer == {}
     await hass.config_entries.async_unload(caldav_entry.entry_id)
+
+
+async def test_if_free_on_caldav_leaves_declined_invite_out(
+    hass: HomeAssistant,
+    caldav_server: FakeCalDav,
+    mailbox: FakeMailbox,
+    outbox,
+    caldav_entry: MockConfigEntry,
+) -> None:
+    """A hand made Nextcloud event blocks; the clashing invite is declined
+    and ends up removed again, the hand made event is never written."""
+    dentist = caldav_server.put_raw(
+        "by-hand.ics", ical(vev("dentist", future(3), organizer=None))
+    )
+    before = caldav_server.resources[dentist]
+    caldav_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        caldav_entry, options={"accept_policy": "if_free"}
+    )
+    assert await hass.config_entries.async_setup(caldav_entry.entry_id)
+    await hass.async_block_till_done()
+
+    mailbox.add(mail("REQUEST", [vev("clash", future(3))], "m1"))
+    await poll(hass, caldav_entry)
+
+    assert caldav_server.resources[dentist] == before
+    assert all("dentist" not in href for _, href in caldav_server.writes())
+    assert events.all_uids(caldav_entry.runtime_data.data) == {"dentist"}
+    assert not any("clash" in href for href in caldav_server.resources)
+    assert len(outbox.sent) == 1
+    await hass.config_entries.async_unload(caldav_entry.entry_id)
