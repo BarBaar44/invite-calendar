@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from homeassistant.components.calendar import DOMAIN as CALENDAR_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -17,17 +20,25 @@ from homeassistant.helpers import service
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
+    CONF_CALDAV_PASSWORD,
+    CONF_CALDAV_URL,
+    CONF_CALDAV_USERNAME,
     CONF_FOLDER,
     CONF_ICS_PATH,
     CONF_PROCESSED_KEYWORD,
+    CONF_STORE_TYPE,
+    DEFAULT_RETENTION_DAYS_CALDAV,
     DEFAULT_RETENTION_DAYS_ICS,
     DOMAIN,
     LOGGER,
     SERVICE_POLL,
+    STORE_CALDAV,
 )
 from .coordinator import InviteCalendarCoordinator
 from .mail.imap import ImapSettings
 from .state import StateStore
+from .store import StoreBackend
+from .store.caldav import CalDavSettings, CalDavStore
 from .store.ics_file import IcsFileStore
 
 PLATFORMS: list[Platform] = [Platform.CALENDAR]
@@ -63,16 +74,32 @@ def imap_settings(entry: ConfigEntry) -> ImapSettings:
     )
 
 
+def caldav_settings(data: Mapping[str, Any]) -> CalDavSettings:
+    """CalDAV settings from entry data."""
+    return CalDavSettings(
+        url=data[CONF_CALDAV_URL],
+        username=data[CONF_CALDAV_USERNAME],
+        password=data[CONF_CALDAV_PASSWORD],
+    )
+
+
+def make_store(hass: HomeAssistant, entry: ConfigEntry) -> tuple[StoreBackend, int]:
+    """The entry's store and its retention in days (0: off)."""
+    if entry.data.get(CONF_STORE_TYPE) == STORE_CALDAV:
+        return (
+            CalDavStore(hass, caldav_settings(entry.data)),
+            DEFAULT_RETENTION_DAYS_CALDAV,
+        )
+    return IcsFileStore(hass, entry.data[CONF_ICS_PATH]), DEFAULT_RETENTION_DAYS_ICS
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: InviteCalendarConfigEntry
 ) -> bool:
     """Set up an Invite Calendar entry."""
+    store, retention_days = make_store(hass, entry)
     coordinator = InviteCalendarCoordinator(
-        hass,
-        entry,
-        imap_settings(entry),
-        IcsFileStore(entry.data[CONF_ICS_PATH]),
-        retention_days=DEFAULT_RETENTION_DAYS_ICS,
+        hass, entry, imap_settings(entry), store, retention_days=retention_days
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
@@ -88,7 +115,8 @@ async def async_unload_entry(
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Delete the entry's state. The calendar file itself is left alone."""
+    """Delete the entry's state. The calendar itself (file or CalDAV
+    collection) is left alone."""
     await StateStore(hass, entry.entry_id).async_remove()
 
 

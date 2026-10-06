@@ -20,6 +20,14 @@
           "processed_keyword": "Eigen IMAP sleutelwoord dat een verwerkt bericht markeert. Later wijzigen laat elk bericht in de map weer nieuw lijken."
         }
       },
+      "store": {
+        "title": "Opslag van de agenda",
+        "description": "Waar de agenda wordt bewaard.",
+        "menu_options": {
+          "ics": "Lokaal .ics bestand",
+          "caldav": "CalDAV agenda (Nextcloud, SOGo, ...)"
+        }
+      },
       "ics": {
         "title": "Agenda",
         "description": "Naam van de agenda en het .ics bestand waarin hij wordt opgeslagen.",
@@ -31,11 +39,30 @@
           "ics_path": "Absoluut pad binnen de configuratiemap. Een bestaand bestand wordt behouden en gebruikt."
         }
       },
-      "reauth_confirm": {
-        "title": "Inloggen op mailbox mislukt",
-        "description": "De IMAP server weigerde de login voor {username} op {host}. Vul het huidige wachtwoord in.",
+      "caldav": {
+        "title": "CalDAV agenda",
+        "description": "Naam van de agenda en de CalDAV collectie waarin hij wordt bewaard. De agenda mag gedeeld zijn met mensen: afspraken die zij daar maken worden getoond maar nooit gewijzigd of verwijderd.",
         "data": {
-          "password": "Wachtwoord"
+          "name": "Naam",
+          "caldav_url": "Agenda URL",
+          "caldav_username": "Gebruikersnaam",
+          "caldav_password": "Wachtwoord"
+        },
+        "data_description": {
+          "caldav_url": "De URL van de collectie. Nextcloud: https://<host>/remote.php/dav/calendars/<gebruiker>/<agenda>/ (Agenda app, menu van de agenda, Privé link kopiëren).",
+          "caldav_password": "Gebruik een app wachtwoord (Nextcloud: Persoonlijke instellingen, Beveiliging, Apparaten & sessies)."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Inloggen mislukt",
+        "description": "Een login werd geweigerd: IMAP {username} op {host}, of de CalDAV agenda {caldav}. Vul het nieuwe wachtwoord in; laat een veld leeg om het opgeslagen wachtwoord te houden.",
+        "data": {
+          "password": "Wachtwoord mailbox",
+          "caldav_password": "Wachtwoord CalDAV"
+        },
+        "data_description": {
+          "password": "Leeg houdt het huidige wachtwoord.",
+          "caldav_password": "Leeg houdt het huidige wachtwoord."
         }
       }
     },
@@ -49,7 +76,12 @@
       "invalid_path": "Vul een absoluut pad in naar een bestand dat eindigt op .ics.",
       "path_outside_config": "Het bestand moet in de configuratiemap staan.",
       "path_not_writable": "Home Assistant kan niet naar die locatie schrijven.",
-      "path_in_use": "Een andere Invite Calendar gebruikt dit bestand al."
+      "path_in_use": "Een andere Invite Calendar gebruikt dit bestand al.",
+      "invalid_url": "Vul een volledige http of https URL in.",
+      "url_in_use": "Een andere Invite Calendar gebruikt deze agenda al.",
+      "caldav_invalid_auth": "De CalDAV server weigerde de login.",
+      "caldav_not_calendar": "Die URL is geen agenda collectie. Controleer het pad.",
+      "caldav_cannot_connect": "Kan geen verbinding maken met de CalDAV server."
     },
     "abort": {
       "already_configured": "Deze mailboxmap is al ingesteld.",
@@ -68,6 +100,9 @@
     },
     "poll_failed": {
       "message": "Mailbox controleren mislukt: {error}"
+    },
+    "store_auth_failed": {
+      "message": "CalDAV login geweigerd voor {store}: {error}"
     }
   },
   "services": {

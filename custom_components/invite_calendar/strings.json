@@ -20,6 +20,14 @@
           "processed_keyword": "Private IMAP keyword that marks a processed message. Changing it later makes every message in the folder look new."
         }
       },
+      "store": {
+        "title": "Calendar store",
+        "description": "Where the calendar is kept.",
+        "menu_options": {
+          "ics": "Local .ics file",
+          "caldav": "CalDAV calendar (Nextcloud, SOGo, ...)"
+        }
+      },
       "ics": {
         "title": "Calendar",
         "description": "Name of the calendar and the .ics file it is stored in.",
@@ -31,11 +39,30 @@
           "ics_path": "Absolute path inside the configuration folder. An existing file is kept and used."
         }
       },
-      "reauth_confirm": {
-        "title": "Mailbox login failed",
-        "description": "The IMAP server rejected the login for {username} on {host}. Enter the current password.",
+      "caldav": {
+        "title": "CalDAV calendar",
+        "description": "Name of the calendar and the CalDAV collection it is stored in. The calendar can be shared with people: events they create there are shown but never changed or removed.",
         "data": {
-          "password": "Password"
+          "name": "Name",
+          "caldav_url": "Calendar URL",
+          "caldav_username": "Username",
+          "caldav_password": "Password"
+        },
+        "data_description": {
+          "caldav_url": "The collection URL. Nextcloud: https://<host>/remote.php/dav/calendars/<user>/<calendar>/ (Calendar app, calendar menu, Copy private link).",
+          "caldav_password": "Use an app password (Nextcloud: Personal settings, Security, Devices & sessions)."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Login failed",
+        "description": "A login was rejected: IMAP {username} on {host}, or the CalDAV calendar {caldav}. Enter the new password; leave a field empty to keep the stored one.",
+        "data": {
+          "password": "Mailbox password",
+          "caldav_password": "CalDAV password"
+        },
+        "data_description": {
+          "password": "Empty keeps the current password.",
+          "caldav_password": "Empty keeps the current password."
         }
       }
     },
@@ -49,7 +76,12 @@
       "invalid_path": "Enter an absolute path to a file ending in .ics.",
       "path_outside_config": "The file must be inside the configuration folder.",
       "path_not_writable": "Home Assistant can't write to that location.",
-      "path_in_use": "Another Invite Calendar entry already uses this file."
+      "path_in_use": "Another Invite Calendar entry already uses this file.",
+      "invalid_url": "Enter a full http or https URL.",
+      "url_in_use": "Another Invite Calendar entry already uses this calendar.",
+      "caldav_invalid_auth": "The CalDAV server rejected the login.",
+      "caldav_not_calendar": "That URL is not a calendar collection. Check the path.",
+      "caldav_cannot_connect": "Could not connect to the CalDAV server."
     },
     "abort": {
       "already_configured": "This mailbox folder is already set up.",
@@ -68,6 +100,9 @@
     },
     "poll_failed": {
       "message": "Polling the mailbox failed: {error}"
+    },
+    "store_auth_failed": {
+      "message": "CalDAV login rejected for {store}: {error}"
     }
   },
   "services": {

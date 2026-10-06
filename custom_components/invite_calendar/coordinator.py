@@ -52,7 +52,7 @@ from .ical import events
 from .ical.imip import ReceivedInvite, apply_message
 from .mail import imap
 from .state import EntryState, StateStore
-from .store import Diff, StoreBackend, StoreError
+from .store import Diff, StoreAuthError, StoreBackend, StoreError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,12 +73,13 @@ def process_messages(
     cal: Calendar,
     state: EntryState,
     retention_cutoff: datetime.datetime | None,
-    only_uids: set[str] | None = None,
+    managed_only: bool = False,
 ) -> ProcessOutcome:
     """Apply messages to `cal` and update `state` (both mutated in place).
 
-    Pure and synchronous: runs in the executor and in tests. `only_uids`
-    limits retention to managed UIDs (shared stores); None prunes all.
+    Pure and synchronous: runs in the executor and in tests. `managed_only`
+    (shared stores) limits retention to UIDs that came in by mail; events
+    people created in the calendar directly are never pruned.
     """
     outcome = ProcessOutcome()
 
@@ -119,7 +120,8 @@ def process_messages(
         outcome.received.extend(result.received)
 
     if retention_cutoff is not None:
-        outcome.pruned = events.prune_past_events(cal, retention_cutoff, only_uids)
+        only = set(state.organizer) if managed_only else None
+        outcome.pruned = events.prune_past_events(cal, retention_cutoff, only)
         if outcome.pruned:
             _LOGGER.info("[%s] pruned %s past event(s)", name, len(outcome.pruned))
 
@@ -196,16 +198,9 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
         messages = await self._async_fetch()
 
         try:
-            cal, snapshot = await self.hass.async_add_executor_job(self.store.load)
+            cal, snapshot = await self.store.async_load()
         except StoreError as err:
-            raise UpdateFailed(
-                translation_domain=DOMAIN,
-                translation_key="store_read_failed",
-                translation_placeholders={
-                    "store": self.store.describe(),
-                    "error": str(err),
-                },
-            ) from err
+            raise self._store_failed(err, "store_read_failed") from err
 
         new_state = copy.deepcopy(self.state)
         cutoff = (
@@ -214,24 +209,21 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
             else None
         )
         outcome = await self.hass.async_add_executor_job(
-            process_messages, name, messages, cal, new_state, cutoff, None
+            process_messages,
+            name,
+            messages,
+            cal,
+            new_state,
+            cutoff,
+            self.store.shared,
         )
 
         try:
-            changes: Diff = await self.hass.async_add_executor_job(
-                self.store.save, cal, snapshot
-            )
+            changes: Diff = await self.store.async_save(cal, snapshot)
         except StoreError as err:
             # Nothing flagged, nothing committed: the next poll applies the
             # same messages again, which is idempotent.
-            raise UpdateFailed(
-                translation_domain=DOMAIN,
-                translation_key="store_write_failed",
-                translation_placeholders={
-                    "store": self.store.describe(),
-                    "error": str(err),
-                },
-            ) from err
+            raise self._store_failed(err, "store_write_failed") from err
 
         if outcome.to_flag:
             try:
@@ -262,6 +254,22 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
 
         self._fire_events(changes, outcome)
         return cal
+
+    def _store_failed(self, err: StoreError, key: str) -> Exception:
+        """The exception to raise for a store failure: reauth on rejected
+        credentials, otherwise a failed update (entity keeps old data)."""
+        placeholders = {"store": self.store.describe(), "error": str(err)}
+        if isinstance(err, StoreAuthError):
+            return ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="store_auth_failed",
+                translation_placeholders=placeholders,
+            )
+        return UpdateFailed(
+            translation_domain=DOMAIN,
+            translation_key=key,
+            translation_placeholders=placeholders,
+        )
 
     def _fire_events(self, changes: Diff, outcome: ProcessOutcome) -> None:
         entity_id = er.async_get(self.hass).async_get_entity_id(

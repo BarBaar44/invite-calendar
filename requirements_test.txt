@@ -1,5 +1,6 @@
 pytest-homeassistant-custom-component
-caldav>=2.1.0
 icalendar>=6.3.1,<7
 python-dateutil>=2.8
 recurring-ical-events>=3.3.0,<4
+# A real CalDAV server for tests/test_caldav_radicale.py
+radicale

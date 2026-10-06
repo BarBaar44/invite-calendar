@@ -1,4 +1,7 @@
-"""Local .ics file store. BLOCKING: run in the executor.
+"""Local .ics file store.
+
+load() and save() block; the coordinator uses async_load()/async_save(),
+which run them in the executor.
 
 Writes are atomic (temp file in the same directory, fsync, os.replace), so
 a restart or full disk halfway through never leaves a truncated file. A file
@@ -12,6 +15,7 @@ import logging
 import os
 from pathlib import Path
 
+from homeassistant.core import HomeAssistant
 from icalendar import Calendar
 
 from ..ical import events
@@ -33,10 +37,25 @@ def _write_atomic(path: Path, data: bytes) -> None:
 class IcsFileStore:
     """A calendar kept in one local .ics file, dedicated to this entry."""
 
-    def __init__(self, path: str, prodid: str = events.PRODID) -> None:
-        """Store at `path`."""
+    shared = False
+
+    def __init__(
+        self, hass: HomeAssistant | None, path: str, prodid: str = events.PRODID
+    ) -> None:
+        """Store at `path`. `hass` is only needed for the async methods."""
+        self.hass = hass
         self.path = Path(path)
         self.prodid = prodid
+
+    async def async_load(self) -> tuple[Calendar, Snapshot]:
+        """load() in the executor."""
+        assert self.hass is not None
+        return await self.hass.async_add_executor_job(self.load)
+
+    async def async_save(self, cal: Calendar, snapshot: Snapshot) -> Diff:
+        """save() in the executor."""
+        assert self.hass is not None
+        return await self.hass.async_add_executor_job(self.save, cal, snapshot)
 
     def describe(self) -> str:
         """The file path."""

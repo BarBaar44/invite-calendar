@@ -13,14 +13,20 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.invite_calendar.const import (
+    CONF_CALDAV_PASSWORD,
+    CONF_CALDAV_URL,
+    CONF_CALDAV_USERNAME,
     CONF_FOLDER,
     CONF_ICS_PATH,
     CONF_PROCESSED_KEYWORD,
     CONF_STORE_TYPE,
     DOMAIN,
+    STORE_CALDAV,
     STORE_ICS,
 )
 from custom_components.invite_calendar.mail import imap
+
+from .caldav_fake import FakeCalDav
 
 
 @pytest.fixture(autouse=True)
@@ -118,3 +124,48 @@ async def setup_entry(
     assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
     return mock_config_entry
+
+
+@pytest.fixture
+def caldav_server() -> Generator[FakeCalDav]:
+    """Every CalDAV store talks to this in memory server."""
+    server = FakeCalDav()
+    with patch(
+        "custom_components.invite_calendar.store.caldav.async_get_clientsession",
+        return_value=server,
+    ):
+        yield server
+
+
+@pytest.fixture
+def caldav_entry(caldav_server: FakeCalDav) -> MockConfigEntry:
+    """A configured entry for vakantie@example.com into the fake CalDAV."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title="Vakantie",
+        version=2,
+        unique_id="vakantie@example.com@mail.example.com/inbox",
+        data={
+            CONF_HOST: "mail.example.com",
+            CONF_PORT: 993,
+            CONF_USERNAME: "vakantie@example.com",
+            CONF_PASSWORD: "pw",
+            CONF_FOLDER: "INBOX",
+            CONF_PROCESSED_KEYWORD: "InviteCalendarProcessed",
+            CONF_STORE_TYPE: STORE_CALDAV,
+            CONF_CALDAV_URL: caldav_server.base,
+            CONF_CALDAV_USERNAME: "bart",
+            CONF_CALDAV_PASSWORD: caldav_server.password,
+        },
+    )
+
+
+@pytest.fixture
+async def setup_caldav_entry(
+    hass: HomeAssistant, mailbox: FakeMailbox, caldav_entry: MockConfigEntry
+) -> MockConfigEntry:
+    """The CalDAV entry, set up."""
+    caldav_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(caldav_entry.entry_id)
+    await hass.async_block_till_done()
+    return caldav_entry
