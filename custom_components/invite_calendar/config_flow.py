@@ -13,7 +13,13 @@ from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+    OptionsFlowWithReload,
+)
 from homeassistant.const import (
     CONF_HOST,
     CONF_NAME,
@@ -21,16 +27,31 @@ from homeassistant.const import (
     CONF_PORT,
     CONF_USERNAME,
 )
+from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 from homeassistant.util import slugify
 
 from .const import (
+    ACCEPT_POLICIES,
+    CONF_ACCEPT_POLICY,
+    CONF_ATTENDEE_CN,
     CONF_CALDAV_PASSWORD,
     CONF_CALDAV_URL,
     CONF_CALDAV_USERNAME,
     CONF_FOLDER,
+    CONF_FROM_NAME,
     CONF_ICS_PATH,
+    CONF_MISSING_LOCATION_REPLY,
+    CONF_MISSING_LOCATION_TEXT,
     CONF_PROCESSED_KEYWORD,
+    CONF_RETENTION_DAYS,
+    CONF_SCAN_INTERVAL_MINUTES,
+    CONF_SMTP_HOST,
+    CONF_SMTP_PASSWORD,
+    CONF_SMTP_PORT,
+    CONF_SMTP_SECTION,
+    CONF_SMTP_USERNAME,
     CONF_STORE_TYPE,
     DEFAULT_FOLDER,
     DEFAULT_ICS_DIR,
@@ -41,7 +62,8 @@ from .const import (
     STORE_CALDAV,
     STORE_ICS,
 )
-from .mail import imap
+from .mail import imap, smtp
+from .options import resolve
 from .store import StoreAuthError, StoreError
 from .store.caldav import (
     CalDavNotCalendarError,
@@ -135,6 +157,12 @@ class InviteCalendarConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 2
     MINOR_VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Accept policy, replies, retention, poll interval, SMTP."""
+        return InviteCalendarOptionsFlow()
 
     def __init__(self) -> None:
         """Start empty."""
@@ -360,6 +388,138 @@ class InviteCalendarConfigFlow(ConfigFlow, domain=DOMAIN):
                 "username": entry.data[CONF_USERNAME],
                 "host": entry.data[CONF_HOST],
                 "caldav": entry.data.get(CONF_CALDAV_URL) or "-",
+            },
+            errors=errors,
+        )
+
+
+def _options_schema() -> vol.Schema:
+    number = selector.NumberSelectorMode.BOX
+    return vol.Schema(
+        {
+            vol.Required(CONF_ACCEPT_POLICY): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=list(ACCEPT_POLICIES),
+                    translation_key="accept_policy",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(CONF_MISSING_LOCATION_REPLY): selector.BooleanSelector(),
+            vol.Optional(CONF_MISSING_LOCATION_TEXT): selector.TextSelector(
+                selector.TextSelectorConfig(multiline=True)
+            ),
+            vol.Required(CONF_RETENTION_DAYS): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=3650, step=1, mode=number)
+            ),
+            vol.Required(CONF_SCAN_INTERVAL_MINUTES): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=1, max=1440, step=1, mode=number)
+            ),
+            vol.Optional(CONF_FROM_NAME): str,
+            vol.Optional(CONF_ATTENDEE_CN): str,
+            vol.Required(CONF_SMTP_SECTION): section(
+                vol.Schema(
+                    {
+                        vol.Optional(CONF_SMTP_HOST): str,
+                        vol.Optional(CONF_SMTP_PORT): selector.NumberSelector(
+                            selector.NumberSelectorConfig(
+                                min=1, max=65535, step=1, mode=number
+                            )
+                        ),
+                        vol.Optional(CONF_SMTP_USERNAME): str,
+                        vol.Optional(CONF_SMTP_PASSWORD): PASSWORD_SELECTOR,
+                    }
+                ),
+                {"collapsed": True},
+            ),
+        }
+    )
+
+
+def _clean(user_input: dict[str, Any], previous: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize numbers, drop empty strings, and keep a stored SMTP password
+    when the field is left empty (password fields are never prefilled)."""
+    out: dict[str, Any] = {}
+    for key, value in user_input.items():
+        if key == CONF_SMTP_SECTION:
+            continue
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                continue
+        if key in (CONF_RETENTION_DAYS, CONF_SCAN_INTERVAL_MINUTES):
+            value = int(value)
+        out[key] = value
+    smtp_in = dict(user_input.get(CONF_SMTP_SECTION) or {})
+    smtp_out: dict[str, Any] = {}
+    for key, value in smtp_in.items():
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                continue
+        if key == CONF_SMTP_PORT:
+            value = int(value)
+        smtp_out[key] = value
+    old_smtp = previous.get(CONF_SMTP_SECTION) or {}
+    if CONF_SMTP_PASSWORD not in smtp_out and old_smtp.get(CONF_SMTP_PASSWORD):
+        smtp_out[CONF_SMTP_PASSWORD] = old_smtp[CONF_SMTP_PASSWORD]
+    out[CONF_SMTP_SECTION] = smtp_out
+    return out
+
+
+class InviteCalendarOptionsFlow(OptionsFlowWithReload):
+    """One form; saving reloads the entry."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show and validate the options."""
+        entry = self.config_entry
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            cleaned = _clean(user_input, entry.options)
+            opts = resolve(entry.data, cleaned, entry.title)
+            if opts.sends_mail:
+                if "@" not in opts.address:
+                    errors["base"] = "username_not_address"
+                else:
+                    try:
+                        await self.hass.async_add_executor_job(smtp.validate, opts.smtp)
+                    except smtp.SmtpAuthError as err:
+                        LOGGER.debug("SMTP validation: %s", err)
+                        errors["base"] = "smtp_invalid_auth"
+                    except smtp.SmtpError as err:
+                        LOGGER.debug("SMTP validation: %s", err)
+                        errors["base"] = "smtp_cannot_connect"
+            if not errors:
+                return self.async_create_entry(data=cleaned)
+
+        current = resolve(entry.data, entry.options, entry.title)
+        smtp_saved = dict(entry.options.get(CONF_SMTP_SECTION) or {})
+        smtp_saved.pop(CONF_SMTP_PASSWORD, None)
+        suggested = {
+            CONF_ACCEPT_POLICY: current.accept_policy,
+            CONF_MISSING_LOCATION_REPLY: current.missing_location_reply,
+            CONF_MISSING_LOCATION_TEXT: current.missing_location_text,
+            CONF_RETENTION_DAYS: current.retention_days,
+            CONF_SCAN_INTERVAL_MINUTES: int(
+                current.scan_interval.total_seconds() // 60
+            ),
+            CONF_FROM_NAME: current.from_name,
+            CONF_ATTENDEE_CN: current.attendee_cn,
+            CONF_SMTP_SECTION: smtp_saved,
+        }
+        if user_input is not None:
+            suggested.update(
+                {k: v for k, v in user_input.items() if k != CONF_SMTP_SECTION}
+            )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                _options_schema(), suggested
+            ),
+            description_placeholders={
+                "address": current.address,
+                "smtp_host": entry.data[CONF_HOST],
             },
             errors=errors,
         )

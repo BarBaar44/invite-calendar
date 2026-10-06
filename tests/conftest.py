@@ -169,3 +169,50 @@ async def setup_caldav_entry(
     assert await hass.config_entries.async_setup(caldav_entry.entry_id)
     await hass.async_block_till_done()
     return caldav_entry
+
+
+@dataclass
+class Outbox:
+    """smtp.send stand in: records messages, can fail on demand."""
+
+    sent: list = field(default_factory=list)
+    error: Exception | None = None
+
+    def send(self, cfg, msg) -> None:
+        if self.error:
+            raise self.error
+        self.sent.append(msg)
+
+    def accepted(self) -> list[tuple[str, int]]:
+        """(UID, SEQUENCE) of every ACCEPTED reply sent."""
+        from icalendar import Calendar
+
+        out = []
+        for msg in self.sent:
+            for part in msg.walk():
+                if part.get_content_type() == "text/calendar":
+                    cal = Calendar.from_ical(part.get_payload(decode=True))
+                    for ev in cal.walk("VEVENT"):
+                        out.append((str(ev["UID"]), int(ev["SEQUENCE"])))
+        return out
+
+    def plain(self) -> list:
+        """Messages without a calendar part (missing location replies)."""
+        return [
+            m
+            for m in self.sent
+            if not any(p.get_content_type() == "text/calendar" for p in m.walk())
+        ]
+
+
+@pytest.fixture
+def outbox() -> Generator[Outbox]:
+    """Patch SMTP sending and validation."""
+    from custom_components.invite_calendar.mail import smtp
+
+    box = Outbox()
+    with (
+        patch.object(smtp, "send", side_effect=box.send),
+        patch.object(smtp, "validate", return_value=None),
+    ):
+        yield box

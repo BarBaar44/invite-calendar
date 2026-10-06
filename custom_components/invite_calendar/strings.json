@@ -103,12 +103,110 @@
     },
     "store_auth_failed": {
       "message": "CalDAV login rejected for {store}: {error}"
+    },
+    "event_not_found": {
+      "message": "No event with UID {uid} in this calendar."
+    },
+    "event_not_managed": {
+      "message": "Event {uid} did not arrive by mail, so it is not answered."
+    },
+    "event_no_organizer": {
+      "message": "Event {uid} has no organizer to answer, or the calendar organizes it itself."
+    },
+    "send_failed": {
+      "message": "Sending the reply failed: {error}"
+    },
+    "end_before_start": {
+      "message": "The end must be after the start."
     }
   },
   "services": {
     "poll": {
       "name": "Poll mailbox",
       "description": "Checks the mailbox for new invitations now instead of waiting for the next scheduled poll."
+    },
+    "accept_event": {
+      "name": "Accept event",
+      "description": "Sends an acceptance to the organizer of an invitation, under any accept policy. Does nothing when the current version was already accepted.",
+      "fields": {
+        "uid": {
+          "name": "UID",
+          "description": "UID of the event, as returned by list_events."
+        }
+      }
+    },
+    "list_events": {
+      "name": "List events",
+      "description": "Occurrences in a window with UID, organizer, attendees and whether the calendar manages and accepted them. Default: the next 7 days.",
+      "fields": {
+        "start": {
+          "name": "Start",
+          "description": "Start of the window. Default: now."
+        },
+        "end": {
+          "name": "End",
+          "description": "End of the window."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Length of the window when no end is given. Default: 7 days."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Invite Calendar options",
+        "description": "Replies are sent as {address}. Mail goes out through {smtp_host} with the mailbox login unless the SMTP section says otherwise.",
+        "data": {
+          "accept_policy": "Accept invitations",
+          "missing_location_reply": "Ask for a missing location",
+          "missing_location_text": "Why the location is needed",
+          "retention_days": "Remove events this many days after they ended",
+          "scan_interval_minutes": "Check the mailbox every (minutes)",
+          "from_name": "Sender name",
+          "attendee_cn": "Name in replies"
+        },
+        "data_description": {
+          "accept_policy": "Never: no replies. Always: accept every invitation. If it has a location: accept once a location is set. Manual: only the accept_event action accepts, so an automation decides.",
+          "missing_location_reply": "Email the organizer of an invitation without a location.",
+          "missing_location_text": "One sentence, included in that email.",
+          "retention_days": "0 keeps everything. On a CalDAV calendar only events that arrived by mail are ever removed.",
+          "from_name": "Display name on outgoing mail.",
+          "attendee_cn": "How the calendar is named in its acceptance."
+        },
+        "sections": {
+          "smtp": {
+            "name": "Outgoing mail (SMTP)",
+            "description": "Leave empty to send with the mailbox host and login on port 587 (STARTTLS). Port 465 uses implicit TLS.",
+            "data": {
+              "smtp_host": "SMTP server",
+              "smtp_port": "Port",
+              "smtp_username": "Username",
+              "smtp_password": "Password"
+            },
+            "data_description": {
+              "smtp_password": "Empty keeps the stored password."
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "smtp_invalid_auth": "The SMTP server rejected the login.",
+      "smtp_cannot_connect": "Could not connect to the SMTP server.",
+      "username_not_address": "Replies need an email address: the mailbox username is not one."
+    }
+  },
+  "selector": {
+    "accept_policy": {
+      "options": {
+        "never": "Never",
+        "always": "Always",
+        "if_location": "If it has a location",
+        "manual": "Manual (accept_event action)"
+      }
     }
   }
 }

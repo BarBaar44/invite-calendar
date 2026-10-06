@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import datetime
 import logging
+from typing import Any
 
 import recurring_ical_events
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.core import HomeAssistant, ServiceResponse, callback
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -18,12 +19,14 @@ from icalendar import Calendar, Event
 from . import InviteCalendarConfigEntry
 from .const import DOMAIN
 from .coordinator import InviteCalendarCoordinator
-from .ical.events import aware
+from .ical.events import aware, get_attendee_emails, get_organizer_email
+from .state import EntryState
 
 _LOGGER = logging.getLogger(__name__)
 
 # Window kept ready for the `event` property (current or next event).
 UPCOMING_WINDOW = datetime.timedelta(days=400)
+LIST_DEFAULT_WINDOW = datetime.timedelta(days=7)
 
 PARALLEL_UPDATES = 0
 
@@ -72,16 +75,17 @@ def _to_calendar_event(component: Event) -> CalendarEvent | None:
     )
 
 
-def expand(
+def _occurrences(
     cal: Calendar, start: datetime.datetime, end: datetime.datetime
-) -> list[CalendarEvent]:
-    """Every occurrence overlapping [start, end), sorted by start.
+) -> list[tuple[Event, CalendarEvent]]:
+    """(component, event) for every occurrence overlapping [start, end),
+    sorted by start.
 
     Uses recurring-ical-events, which applies EXDATE and RECURRENCE-ID
     overrides and keeps wall clock time across DST. A series that can't be
     expanded is skipped instead of hiding the whole calendar.
     """
-    out: list[CalendarEvent] = []
+    out: list[tuple[Event, CalendarEvent]] = []
     query = recurring_ical_events.of(cal, skip_bad_series=True)
     for component in query.between(start, end):
         try:
@@ -90,8 +94,54 @@ def expand(
             _LOGGER.warning("Skipping event %s: %s", component.get("UID"), err)
             continue
         if event is not None:
-            out.append(event)
-    out.sort(key=lambda e: e.start_datetime_local)
+            out.append((component, event))
+    out.sort(key=lambda pair: pair[1].start_datetime_local)
+    return out
+
+
+def expand(
+    cal: Calendar, start: datetime.datetime, end: datetime.datetime
+) -> list[CalendarEvent]:
+    """Every occurrence overlapping [start, end), sorted by start."""
+    return [event for _, event in _occurrences(cal, start, end)]
+
+
+def _iso(value: datetime.date | datetime.datetime) -> str:
+    return value.isoformat()
+
+
+def list_occurrences(
+    cal: Calendar,
+    start: datetime.datetime,
+    end: datetime.datetime,
+    state: EntryState,
+) -> list[dict[str, Any]]:
+    """Service list_events: what calendar.get_events leaves out (UID,
+    organizer, attendees, managed, accepted) for every occurrence."""
+    out = []
+    for component, event in _occurrences(cal, start, end):
+        uid = event.uid or ""
+        seq = int(component.get("SEQUENCE", 0))
+        out.append(
+            {
+                "uid": uid,
+                "recurrence_id": event.recurrence_id,
+                "start": _iso(event.start),
+                "end": _iso(event.end),
+                "all_day": event.all_day,
+                "summary": event.summary,
+                "description": event.description,
+                "location": event.location,
+                "organizer": get_organizer_email(component),
+                "attendees": get_attendee_emails(component),
+                "status": str(component.get("STATUS"))
+                if component.get("STATUS")
+                else None,
+                "sequence": seq,
+                "managed": uid in state.organizer,
+                "accepted": state.accepted.get(uid) == seq,
+            }
+        )
     return out
 
 
@@ -167,3 +217,34 @@ class InviteCalendarEntity(
                     "error": str(self.coordinator.last_exception)
                 },
             )
+
+    async def async_accept_event(self, uid: str) -> ServiceResponse:
+        """Service invite_calendar.accept_event."""
+        return await self.coordinator.async_accept(uid)
+
+    async def async_list_events(
+        self,
+        start: datetime.datetime | None = None,
+        end: datetime.datetime | None = None,
+        duration: datetime.timedelta | None = None,
+    ) -> ServiceResponse:
+        """Service invite_calendar.list_events. Default window: the next 7
+        days from now."""
+        # A naive time from a service call is local wall time, never UTC
+        # (dt_util.as_local would read it as UTC).
+        start = aware(start) if start is not None else dt_util.now()
+        if end is not None:
+            end = aware(end)
+        else:
+            end = start + (duration or LIST_DEFAULT_WINDOW)
+        if end <= start:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="end_before_start"
+            )
+        cal = self.coordinator.data
+        if cal is None:
+            return {"events": []}
+        occurrences = await self.hass.async_add_executor_job(
+            list_occurrences, cal, start, end, self.coordinator.state
+        )
+        return {"events": occurrences}

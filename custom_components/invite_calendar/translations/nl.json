@@ -103,12 +103,110 @@
     },
     "store_auth_failed": {
       "message": "CalDAV login geweigerd voor {store}: {error}"
+    },
+    "event_not_found": {
+      "message": "Geen afspraak met UID {uid} in deze agenda."
+    },
+    "event_not_managed": {
+      "message": "Afspraak {uid} kwam niet per mail binnen en wordt dus niet beantwoord."
+    },
+    "event_no_organizer": {
+      "message": "Afspraak {uid} heeft geen organisator om te antwoorden, of de agenda organiseert hem zelf."
+    },
+    "send_failed": {
+      "message": "Versturen van het antwoord mislukt: {error}"
+    },
+    "end_before_start": {
+      "message": "Het einde moet na het begin liggen."
     }
   },
   "services": {
     "poll": {
       "name": "Mailbox controleren",
       "description": "Controleert de mailbox nu op nieuwe uitnodigingen in plaats van te wachten op de volgende geplande controle."
+    },
+    "accept_event": {
+      "name": "Afspraak accepteren",
+      "description": "Stuurt een acceptatie naar de organisator van een uitnodiging, bij elk acceptatiebeleid. Doet niets als de huidige versie al geaccepteerd is.",
+      "fields": {
+        "uid": {
+          "name": "UID",
+          "description": "UID van de afspraak, zoals list_events die teruggeeft."
+        }
+      }
+    },
+    "list_events": {
+      "name": "Afspraken opvragen",
+      "description": "Afspraken in een periode met UID, organisator, deelnemers en of de agenda ze beheert en accepteerde. Standaard: de komende 7 dagen.",
+      "fields": {
+        "start": {
+          "name": "Begin",
+          "description": "Begin van de periode. Standaard: nu."
+        },
+        "end": {
+          "name": "Einde",
+          "description": "Einde van de periode."
+        },
+        "duration": {
+          "name": "Duur",
+          "description": "Lengte van de periode als er geen einde is. Standaard: 7 dagen."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Invite Calendar opties",
+        "description": "Antwoorden worden verstuurd als {address}. Mail gaat via {smtp_host} met de login van de mailbox, tenzij de SMTP sectie iets anders zegt.",
+        "data": {
+          "accept_policy": "Uitnodigingen accepteren",
+          "missing_location_reply": "Vragen om een ontbrekende locatie",
+          "missing_location_text": "Waarom de locatie nodig is",
+          "retention_days": "Afspraken zoveel dagen na afloop verwijderen",
+          "scan_interval_minutes": "Mailbox controleren elke (minuten)",
+          "from_name": "Naam afzender",
+          "attendee_cn": "Naam in antwoorden"
+        },
+        "data_description": {
+          "accept_policy": "Nooit: geen antwoorden. Altijd: elke uitnodiging accepteren. Als er een locatie is: accepteren zodra er een locatie is. Handmatig: alleen de accept_event actie accepteert, zodat een automatisering beslist.",
+          "missing_location_reply": "Mail de organisator van een uitnodiging zonder locatie.",
+          "missing_location_text": "Eén zin, opgenomen in die mail.",
+          "retention_days": "0 bewaart alles. In een CalDAV agenda worden alleen afspraken verwijderd die per mail binnenkwamen.",
+          "from_name": "Weergavenaam op uitgaande mail.",
+          "attendee_cn": "Hoe de agenda heet in zijn acceptatie."
+        },
+        "sections": {
+          "smtp": {
+            "name": "Uitgaande mail (SMTP)",
+            "description": "Leeg laten om te versturen met de host en login van de mailbox op poort 587 (STARTTLS). Poort 465 gebruikt directe TLS.",
+            "data": {
+              "smtp_host": "SMTP server",
+              "smtp_port": "Poort",
+              "smtp_username": "Gebruikersnaam",
+              "smtp_password": "Wachtwoord"
+            },
+            "data_description": {
+              "smtp_password": "Leeg houdt het opgeslagen wachtwoord."
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "smtp_invalid_auth": "De SMTP server weigerde de login.",
+      "smtp_cannot_connect": "Kan geen verbinding maken met de SMTP server.",
+      "username_not_address": "Antwoorden hebben een e-mailadres nodig: de gebruikersnaam van de mailbox is er geen."
+    }
+  },
+  "selector": {
+    "accept_policy": {
+      "options": {
+        "never": "Nooit",
+        "always": "Altijd",
+        "if_location": "Als er een locatie is",
+        "manual": "Handmatig (accept_event actie)"
+      }
     }
   }
 }

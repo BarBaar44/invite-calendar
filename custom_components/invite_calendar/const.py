@@ -30,7 +30,39 @@ DEFAULT_FOLDER: Final = "INBOX"
 DEFAULT_PROCESSED_KEYWORD: Final = "InviteCalendarProcessed"
 DEFAULT_ICS_DIR: Final = "invite_calendar"
 
-# Options arrive in milestone 3; these are the fixed values until then.
+# Options (entry.options); see options.py for the defaults.
+CONF_ACCEPT_POLICY: Final = "accept_policy"
+CONF_MISSING_LOCATION_REPLY: Final = "missing_location_reply"
+CONF_MISSING_LOCATION_TEXT: Final = "missing_location_text"
+CONF_RETENTION_DAYS: Final = "retention_days"
+CONF_SCAN_INTERVAL_MINUTES: Final = "scan_interval_minutes"
+CONF_FROM_NAME: Final = "from_name"
+CONF_ATTENDEE_CN: Final = "attendee_cn"
+CONF_SMTP_SECTION: Final = "smtp"
+CONF_SMTP_HOST: Final = "smtp_host"
+CONF_SMTP_PORT: Final = "smtp_port"
+CONF_SMTP_USERNAME: Final = "smtp_username"
+CONF_SMTP_PASSWORD: Final = "smtp_password"
+
+ACCEPT_NEVER: Final = "never"
+ACCEPT_ALWAYS: Final = "always"
+ACCEPT_IF_LOCATION: Final = "if_location"
+# Only the accept_event service accepts: a consumer gates acceptance on its
+# own check (the EV project: once the location geocodes).
+ACCEPT_MANUAL: Final = "manual"
+ACCEPT_POLICIES: Final = (
+    ACCEPT_NEVER,
+    ACCEPT_ALWAYS,
+    ACCEPT_IF_LOCATION,
+    ACCEPT_MANUAL,
+)
+
+DEFAULT_SMTP_PORT: Final = 587
+DEFAULT_MISSING_LOCATION_TEXT: Final = (
+    "This event doesn't have a location set, and the automation that reads "
+    "this calendar needs one."
+)
+
 DEFAULT_SCAN_INTERVAL: Final = timedelta(minutes=5)
 DEFAULT_RETENTION_DAYS_ICS: Final = 30
 # Off on a shared CalDAV calendar; when enabled (M3 options) it only ever
@@ -43,5 +75,7 @@ EVENT_UPDATED: Final = "invite_calendar_updated"
 EVENT_INVITE_RECEIVED: Final = "invite_calendar_invite_received"
 
 SERVICE_POLL: Final = "poll"
+SERVICE_ACCEPT_EVENT: Final = "accept_event"
+SERVICE_LIST_EVENTS: Final = "list_events"
 
 STATE_STORAGE_VERSION: Final = 1

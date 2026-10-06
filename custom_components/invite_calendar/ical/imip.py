@@ -42,6 +42,10 @@ class ReceivedInvite:
     summary: str
     start: datetime.date | datetime.datetime | None
     location: str | None
+    # The email it came in, for a threaded reply.
+    message_id: str | None = None
+    subject: str | None = None
+    references: str | None = None
 
 
 @dataclass(slots=True)
@@ -181,6 +185,9 @@ def apply_message(msg: Message, cal: Calendar, name: str = "") -> MessageResult:
                     summary=str(primary.get("SUMMARY", "")),
                     start=start.dt if start is not None else None,
                     location=str(location) if location else None,
+                    message_id=msg.get("Message-ID"),
+                    subject=msg.get("Subject"),
+                    references=msg.get("References"),
                 )
             )
 

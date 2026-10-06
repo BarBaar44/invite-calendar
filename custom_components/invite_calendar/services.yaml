@@ -3,3 +3,33 @@ poll:
     entity:
       integration: invite_calendar
       domain: calendar
+
+accept_event:
+  target:
+    entity:
+      integration: invite_calendar
+      domain: calendar
+  fields:
+    uid:
+      required: true
+      example: "040000008200E00074C5B7101A82E008"
+      selector:
+        text:
+
+list_events:
+  target:
+    entity:
+      integration: invite_calendar
+      domain: calendar
+  fields:
+    start:
+      example: "2026-10-20 00:00:00"
+      selector:
+        datetime:
+    end:
+      example: "2026-10-27 00:00:00"
+      selector:
+        datetime:
+    duration:
+      selector:
+        duration:

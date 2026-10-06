@@ -2,6 +2,12 @@
   "services": {
     "poll": {
       "service": "mdi:email-sync-outline"
+    },
+    "accept_event": {
+      "service": "mdi:calendar-check"
+    },
+    "list_events": {
+      "service": "mdi:calendar-search"
     }
   }
 }

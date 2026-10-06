@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.components.calendar import DOMAIN as CALENDAR_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -14,7 +15,7 @@ from homeassistant.const import (
     CONF_USERNAME,
     Platform,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import service
 from homeassistant.helpers.typing import ConfigType
@@ -27,15 +28,16 @@ from .const import (
     CONF_ICS_PATH,
     CONF_PROCESSED_KEYWORD,
     CONF_STORE_TYPE,
-    DEFAULT_RETENTION_DAYS_CALDAV,
-    DEFAULT_RETENTION_DAYS_ICS,
     DOMAIN,
     LOGGER,
+    SERVICE_ACCEPT_EVENT,
+    SERVICE_LIST_EVENTS,
     SERVICE_POLL,
     STORE_CALDAV,
 )
 from .coordinator import InviteCalendarCoordinator
 from .mail.imap import ImapSettings
+from .options import entry_options
 from .state import StateStore
 from .store import StoreBackend
 from .store.caldav import CalDavSettings, CalDavStore
@@ -57,6 +59,28 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         entity_domain=CALENDAR_DOMAIN,
         schema=None,
         func="async_poll",
+    )
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_ACCEPT_EVENT,
+        entity_domain=CALENDAR_DOMAIN,
+        schema={vol.Required("uid"): cv.string},
+        func="async_accept_event",
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_LIST_EVENTS,
+        entity_domain=CALENDAR_DOMAIN,
+        schema={
+            vol.Optional("start"): cv.datetime,
+            vol.Optional("end"): cv.datetime,
+            vol.Optional("duration"): vol.All(cv.time_period, cv.positive_timedelta),
+        },
+        func="async_list_events",
+        supports_response=SupportsResponse.ONLY,
     )
     return True
 
@@ -83,23 +107,19 @@ def caldav_settings(data: Mapping[str, Any]) -> CalDavSettings:
     )
 
 
-def make_store(hass: HomeAssistant, entry: ConfigEntry) -> tuple[StoreBackend, int]:
-    """The entry's store and its retention in days (0: off)."""
+def make_store(hass: HomeAssistant, entry: ConfigEntry) -> StoreBackend:
+    """The entry's calendar store."""
     if entry.data.get(CONF_STORE_TYPE) == STORE_CALDAV:
-        return (
-            CalDavStore(hass, caldav_settings(entry.data)),
-            DEFAULT_RETENTION_DAYS_CALDAV,
-        )
-    return IcsFileStore(hass, entry.data[CONF_ICS_PATH]), DEFAULT_RETENTION_DAYS_ICS
+        return CalDavStore(hass, caldav_settings(entry.data))
+    return IcsFileStore(hass, entry.data[CONF_ICS_PATH])
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: InviteCalendarConfigEntry
 ) -> bool:
     """Set up an Invite Calendar entry."""
-    store, retention_days = make_store(hass, entry)
     coordinator = InviteCalendarCoordinator(
-        hass, entry, imap_settings(entry), store, retention_days=retention_days
+        hass, entry, imap_settings(entry), make_store(hass, entry), entry_options(entry)
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

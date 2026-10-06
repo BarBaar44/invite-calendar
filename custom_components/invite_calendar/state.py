@@ -3,7 +3,9 @@
     {"organizer": {uid: email},        managed events and who sent them
      "accepted":  {uid: sequence},     RSVPs sent (milestone 3)
      "failed":    {message_id: n},     processing attempts per message
-     "sent":      {uid: message_id}}   our own outbound invites (milestone 3)
+     "sent":      {uid: message_id},   our own outbound invites (milestone 3b)
+     "rsvp_failed": {uid: sequence}}   RSVP permanently refused for this
+                                       sequence; tried again after an update
 
 "Managed" means the UID is in `organizer`: it arrived through the mailbox
 (or, later, was created through the services).
@@ -28,6 +30,7 @@ class EntryState:
     accepted: dict[str, int] = field(default_factory=dict)
     failed: dict[str, int] = field(default_factory=dict)
     sent: dict[str, str] = field(default_factory=dict)
+    rsvp_failed: dict[str, int] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         """JSON document."""
@@ -36,13 +39,14 @@ class EntryState:
             "accepted": self.accepted,
             "failed": self.failed,
             "sent": self.sent,
+            "rsvp_failed": self.rsvp_failed,
         }
 
     def forget(self, uids: list[str] | set[str]) -> bool:
         """Drop every per UID entry for these UIDs. True if anything went."""
         changed = False
         for uid in uids:
-            for mapping in (self.organizer, self.accepted, self.sent):
+            for mapping in (self.organizer, self.accepted, self.sent, self.rsvp_failed):
                 if mapping.pop(uid, None) is not None:
                     changed = True
         return changed
@@ -51,7 +55,7 @@ class EntryState:
         """Drop per UID entries whose UID is no longer in the calendar."""
         stale = {
             uid
-            for mapping in (self.organizer, self.accepted, self.sent)
+            for mapping in (self.organizer, self.accepted, self.sent, self.rsvp_failed)
             for uid in mapping
             if uid not in live
         }
@@ -75,6 +79,7 @@ class StateStore:
             accepted={k: int(v) for k, v in (data.get("accepted") or {}).items()},
             failed={k: int(v) for k, v in (data.get("failed") or {}).items()},
             sent=dict(data.get("sent") or {}),
+            rsvp_failed={k: int(v) for k, v in (data.get("rsvp_failed") or {}).items()},
         )
 
     async def async_save(self, state: EntryState) -> None:

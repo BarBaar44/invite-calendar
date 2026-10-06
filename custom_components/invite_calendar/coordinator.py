@@ -11,14 +11,18 @@ Same order as the pyscript app (reference/calendar_mailbox.py _poll_one):
    committed, so the next poll retries
 6. flag processed messages
 7. commit state (organizer, failed), forget cancelled and pruned UIDs
-8. fire invite_calendar_updated / invite_calendar_invite_received
+8. missing location replies for new or changed invites (option)
+9. RSVP scan per accept policy; "accepted" written after a confirmed send
+10. fire invite_calendar_updated / invite_calendar_invite_received
+
+Replies are sent only after the save succeeded, so a message that is
+retried never produces a second reply.
 
 Steps 3 and 4 run as one executor job on a COPY of the state, so a failed
 save leaves the committed state untouched.
 
-One asyncio.Lock per entry wraps the whole cycle; every later writer (the
-milestone 3 services) takes the same lock, so load/modify/save never
-interleave.
+One asyncio.Lock per entry wraps the whole cycle; the services take the
+same lock, so load/modify/save and sends never interleave.
 """
 
 from __future__ import annotations
@@ -35,14 +39,17 @@ from homeassistant.components import persistent_notification
 from homeassistant.components.calendar import DOMAIN as CALENDAR_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 from icalendar import Calendar
 
 from .const import (
-    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     EVENT_INVITE_RECEIVED,
     EVENT_UPDATED,
@@ -50,7 +57,9 @@ from .const import (
 )
 from .ical import events
 from .ical.imip import ReceivedInvite, apply_message
-from .mail import imap
+from .mail import imap, smtp
+from .options import EntryOptions
+from .replies import rsvp_candidates
 from .state import EntryState, StateStore
 from .store import Diff, StoreAuthError, StoreBackend, StoreError
 
@@ -140,7 +149,7 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
         entry: ConfigEntry,
         imap_settings: imap.ImapSettings,
         store: StoreBackend,
-        retention_days: int | None,
+        options: EntryOptions,
     ) -> None:
         """One coordinator per config entry."""
         super().__init__(
@@ -148,11 +157,12 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
             _LOGGER,
             config_entry=entry,
             name=f"{DOMAIN} {entry.title}",
-            update_interval=DEFAULT_SCAN_INTERVAL,
+            update_interval=options.scan_interval,
         )
         self.imap_settings = imap_settings
         self.store = store
-        self.retention_days = retention_days
+        self.options = options
+        self.retention_days = options.retention_days
         self.lock = asyncio.Lock()
         self._state_store = StateStore(hass, entry.entry_id)
         self.state = EntryState()
@@ -252,8 +262,158 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
                 notification_id=f"{DOMAIN}_{self.config_entry.entry_id}_bad_message",
             )
 
+        await self._async_missing_location_replies(changes, outcome)
+        await self._async_rsvp_scan(cal)
         self._fire_events(changes, outcome)
         return cal
+
+    # ---------------------------------------------------------------- replies
+
+    async def _async_send(self, build, *args) -> None:
+        """Build and send one message in the executor."""
+
+        def job() -> None:
+            smtp.send(self.options.smtp, build(self.options.smtp, *args))
+
+        await self.hass.async_add_executor_job(job)
+
+    async def _async_missing_location_replies(
+        self, changes: Diff, outcome: ProcessOutcome
+    ) -> None:
+        """Ask organizers of new or changed invites without a LOCATION."""
+        opts = self.options
+        if not opts.missing_location_reply:
+            return
+        changed = set(changes.changed)
+        own = opts.address.lower()
+        for invite in outcome.received:
+            if invite.uid not in changed or invite.location:
+                continue
+            if not invite.organizer or invite.organizer.lower() == own:
+                continue
+            try:
+                await self._async_send(
+                    smtp.build_missing_location_reply,
+                    opts.from_name,
+                    opts.address,
+                    invite.organizer,
+                    smtp.OriginalMessage(
+                        invite.message_id, invite.subject, invite.references
+                    ),
+                    invite.summary or "the event",
+                    smtp.human_start(invite.start),
+                    opts.missing_location_text,
+                )
+            except smtp.SmtpError as err:
+                _LOGGER.warning(
+                    "[%s] missing location reply to %s not sent: %s",
+                    self.config_entry.title,
+                    invite.organizer,
+                    err,
+                )
+            else:
+                _LOGGER.info(
+                    "[%s] asked %s for a location for %s",
+                    self.config_entry.title,
+                    invite.organizer,
+                    invite.uid,
+                )
+
+    async def _async_send_accept(self, component) -> None:
+        opts = self.options
+        await self._async_send(
+            smtp.build_accept_reply,
+            opts.from_name,
+            opts.address,
+            opts.attendee_cn,
+            events.get_organizer_email(component),
+            component,
+        )
+
+    async def _async_rsvp_scan(self, cal: Calendar) -> None:
+        """Accept every managed event the policy allows, once per sequence."""
+        opts = self.options
+        candidates = rsvp_candidates(
+            cal, self.state, opts.accept_policy, opts.address, dt_util.now()
+        )
+        if not candidates:
+            return
+        name = self.config_entry.title
+        dirty = False
+        for component in candidates:
+            uid = str(component.get("UID"))
+            seq = int(component.get("SEQUENCE", 0))
+            try:
+                await self._async_send_accept(component)
+            except smtp.SmtpRefusedError as err:
+                # Permanent for this sequence; an updated invite tries again.
+                _LOGGER.error(
+                    "[%s] RSVP for %s refused, not retrying: %s", name, uid, err
+                )
+                self.state.rsvp_failed[uid] = seq
+                dirty = True
+                continue
+            except smtp.SmtpError as err:
+                # Server down or login rejected: the rest would fail too.
+                _LOGGER.warning(
+                    "[%s] RSVP for %s not sent, retrying next poll: %s", name, uid, err
+                )
+                break
+            self.state.accepted[uid] = seq
+            self.state.rsvp_failed.pop(uid, None)
+            dirty = True
+            _LOGGER.info("[%s] accepted %s (sequence %s)", name, uid, seq)
+        if dirty:
+            await self._state_store.async_save(self.state)
+
+    # --------------------------------------------------------------- services
+
+    async def async_accept(self, uid: str) -> dict[str, object]:
+        """Service accept_event: RSVP ACCEPTED for one managed event, under
+        any policy. Already accepted at this SEQUENCE: nothing is sent."""
+        async with self.lock:
+            cal = self.data
+            component = events.find_event(cal, uid) if cal is not None else None
+            if component is None:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="event_not_found",
+                    translation_placeholders={"uid": uid},
+                )
+            if uid not in self.state.organizer:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="event_not_managed",
+                    translation_placeholders={"uid": uid},
+                )
+            organizer = events.get_organizer_email(component)
+            if not organizer or organizer.lower() == self.options.address.lower():
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="event_no_organizer",
+                    translation_placeholders={"uid": uid},
+                )
+            seq = int(component.get("SEQUENCE", 0))
+            if self.state.accepted.get(uid) == seq:
+                return {"uid": uid, "sequence": seq, "sent": False}
+            try:
+                await self._async_send_accept(component)
+            except smtp.SmtpError as err:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="send_failed",
+                    translation_placeholders={"error": str(err)},
+                ) from err
+            self.state.accepted[uid] = seq
+            self.state.rsvp_failed.pop(uid, None)
+            await self._state_store.async_save(self.state)
+            _LOGGER.info(
+                "[%s] accepted %s (sequence %s) on request",
+                self.config_entry.title,
+                uid,
+                seq,
+            )
+            return {"uid": uid, "sequence": seq, "sent": True}
 
     def _store_failed(self, err: StoreError, key: str) -> Exception:
         """The exception to raise for a store failure: reauth on rejected

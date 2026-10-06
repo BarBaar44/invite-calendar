@@ -9,10 +9,12 @@ things like a person, and Home Assistant knows about them.
 * Mirrors them into a local .ics file, or into a CalDAV calendar such as
   Nextcloud, which people can keep using directly.
 * Exposes them as a calendar entity.
+* Optionally accepts invitations (always, once they have a location, or
+  only when an automation says so) and asks organizers for a missing
+  location.
 
-> **Status: pre release (0.3.0).** Inbound invitations into a local .ics
-> file or a CalDAV calendar work. RSVPs and outbound invites are not there
-> yet.
+> **Status: pre release (0.4.0).** Inbound invitations, CalDAV and replies
+> work. Creating and changing events with outbound invites is next.
 
 ## Installation (HACS custom repository)
 
@@ -50,6 +52,28 @@ The calendar can be one people use directly. The integration:
   overwritten (the poll retries instead);
 * never removes old events from it (retention is off for CalDAV).
 
+### Options
+
+Settings, Devices & services, Invite Calendar, the entry, **Configure**.
+
+| Option | Default | What it does |
+|---|---|---|
+| Accept invitations | Never | Never, Always, If it has a location, or Manual (only the `accept_event` action accepts, so an automation decides) |
+| Ask for a missing location | off | Email the organizer of an invitation without a location, with your sentence on why it matters |
+| Remove events after | 30 days (.ics), 0 (CalDAV) | 0 keeps everything; on CalDAV only events that arrived by mail are ever removed |
+| Check the mailbox every | 5 minutes | |
+| Sender name, Name in replies | "<name> Calendar", "<name>" | Display names on outgoing mail |
+| Outgoing mail (SMTP) | mailbox host and login, port 587 | Override host, port (465 for implicit TLS), username, password |
+
+Replies are sent as the mailbox address, so it must be an email address.
+Saving options that send mail tests the SMTP login first.
+
+An acceptance is sent once per series (not per occurrence) and again only
+when the organizer changes the event. It is recorded only after the mail
+server took it, so a failed send is retried on the next poll. Events that
+are already over are not answered. If the server refuses the recipient, that
+version of the event is not tried again.
+
 ### The processed keyword
 
 Processed mail gets a private IMAP keyword (default
@@ -76,7 +100,21 @@ skipped with a notification. In an .ics file, events that ended more than
 
 | Service | What it does |
 |---|---|
-| `invite_calendar.poll` | Check the mailbox now. Target the calendar entity. |
+| `invite_calendar.poll` | Check the mailbox now. |
+| `invite_calendar.list_events` | Occurrences in a window (default: the next 7 days) with what `calendar.get_events` leaves out: `uid`, `recurrence_id`, `organizer`, `attendees`, `status`, `sequence`, `managed` (arrived by mail), `accepted`. Returns a response. |
+| `invite_calendar.accept_event` | Accept the invitation with this `uid` now, under any policy. Does nothing when this version was already accepted. |
+
+All of them target the calendar entity.
+
+```yaml
+action: invite_calendar.list_events
+target:
+  entity_id: calendar.tesla
+data:
+  duration:
+    days: 14
+response_variable: trips
+```
 
 ## Events
 
