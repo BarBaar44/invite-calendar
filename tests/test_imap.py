@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import imaplib
 from dataclasses import replace
 from unittest.mock import patch
@@ -54,7 +55,7 @@ class FakeIMAP:
     def uid(self, command, *args):
         self.calls.append((command, *args))
         if command == "SEARCH":
-            keyword = args[-1]
+            keyword = args[args.index("UNKEYWORD") + 1]
             uids = [u for u, (_, f) in self.messages.items() if keyword not in f]
             return "OK", [" ".join(uids).encode()]
         if command == "FETCH":
@@ -130,3 +131,30 @@ def test_connect_error() -> None:
         pytest.raises(imap.ImapConnectError),
     ):
         imap.fetch_unprocessed(CFG)
+
+
+def test_search_without_lookback_reads_whole_folder() -> None:
+    assert imap.search_criteria(CFG) == ("UNKEYWORD", "InviteCalendarProcessed")
+
+
+def test_search_criteria_lookback_english_month() -> None:
+    cfg = replace(CFG, lookback_days=14)
+    today = datetime.date(2026, 10, 6)
+    assert imap.search_criteria(cfg, today) == (
+        "UNKEYWORD",
+        "InviteCalendarProcessed",
+        "SINCE",
+        "22-Sep-2026",
+    )
+    assert imap.search_criteria(replace(CFG, lookback_days=40), today)[-1] == (
+        "27-Aug-2026"
+    )
+
+
+def test_fetch_sends_since() -> None:
+    imap.fetch_unprocessed(replace(CFG, lookback_days=14))
+    (search,) = [c for c in FakeIMAP.instances[0].calls if c[0] == "SEARCH"]
+    assert search[1:4] == (None, "UNKEYWORD", "InviteCalendarProcessed")
+    assert search[4] == "SINCE"
+    since = datetime.date.today() - datetime.timedelta(days=14)
+    assert search[5] == f"{since.day:02d}-{since.strftime('%b')}-{since.year}"

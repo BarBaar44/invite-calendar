@@ -143,6 +143,7 @@ def imap_settings(entry: ConfigEntry) -> ImapSettings:
         password=data[CONF_PASSWORD],
         folder=data[CONF_FOLDER],
         keyword=data[CONF_PROCESSED_KEYWORD],
+        lookback_days=entry_options(entry).lookback_days,
     )
 
 

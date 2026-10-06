@@ -4,8 +4,9 @@ Same order as the pyscript app (reference/calendar_mailbox.py _poll_one):
 
 1. fetch unflagged messages (IMAP, executor)
 2. load the store, snapshot
-3. apply each message (REQUEST/CANCEL, validated first); a message that
-   raises is retried up to MAX_MESSAGE_ATTEMPTS, then given up and flagged
+3. apply each message (REQUEST/CANCEL, validated first; only managed
+   events, only by their own organizer); a message that raises is retried
+   up to MAX_MESSAGE_ATTEMPTS, then given up and flagged
 4. retention prune
 5. per UID diff save; on a store error nothing is flagged and nothing is
    committed, so the next poll retries
@@ -107,7 +108,7 @@ def process_messages(
         msg: Message = email.message_from_bytes(raw)
         msg_id = str(msg.get("Message-ID") or f"imap-uid-{imap_uid}")
         try:
-            result = apply_message(msg, cal, name, own_address)
+            result = apply_message(msg, cal, name, own_address, state.organizer)
         except Exception as err:  # noqa: BLE001 - any failure: retry or give up
             attempts = state.failed.get(msg_id, 0) + 1
             if attempts >= MAX_MESSAGE_ATTEMPTS:

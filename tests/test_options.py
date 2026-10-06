@@ -14,6 +14,7 @@ from custom_components.invite_calendar.const import (
     CONF_ACCEPT_POLICY,
     CONF_ATTENDEE_CN,
     CONF_FROM_NAME,
+    CONF_LOOKBACK_DAYS,
     CONF_MISSING_LOCATION_REPLY,
     CONF_RETENTION_DAYS,
     CONF_SCAN_INTERVAL_MINUTES,
@@ -32,6 +33,7 @@ BASE = {
     CONF_ACCEPT_POLICY: "never",
     CONF_MISSING_LOCATION_REPLY: False,
     CONF_RETENTION_DAYS: 30,
+    CONF_LOOKBACK_DAYS: 14,
     CONF_SCAN_INTERVAL_MINUTES: 5,
     CONF_SMTP_SECTION: {},
 }
@@ -43,6 +45,7 @@ def test_defaults(
     opts = entry_options(mock_config_entry)
     assert opts.accept_policy == "never"
     assert opts.retention_days == 30
+    assert opts.lookback_days == 14
     assert opts.scan_interval == timedelta(minutes=5)
     assert opts.from_name == "Tesla Calendar" and opts.attendee_cn == "Tesla"
     assert opts.address == "tesla@example.com"
@@ -70,6 +73,7 @@ async def test_options_saved_and_applied(
                 **BASE,
                 CONF_ACCEPT_POLICY: "manual",
                 CONF_SCAN_INTERVAL_MINUTES: 15.0,
+                CONF_LOOKBACK_DAYS: 0.0,
                 CONF_FROM_NAME: "  Auto  ",
                 CONF_ATTENDEE_CN: "",
             },
@@ -80,6 +84,7 @@ async def test_options_saved_and_applied(
         **BASE,
         CONF_ACCEPT_POLICY: "manual",
         CONF_SCAN_INTERVAL_MINUTES: 15,
+        CONF_LOOKBACK_DAYS: 0,
         CONF_FROM_NAME: "Auto",
     }
     await hass.async_block_till_done()
@@ -88,6 +93,7 @@ async def test_options_saved_and_applied(
     assert coordinator.update_interval == timedelta(minutes=15)
     assert coordinator.options.accept_policy == "manual"
     assert coordinator.options.attendee_cn == "Tesla"
+    assert coordinator.imap_settings.lookback_days == 0
     await hass.config_entries.async_unload(setup_entry.entry_id)
 
 

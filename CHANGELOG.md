@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.1 (2026-10-06)
+
+Security and robustness fixes. No configuration changes needed.
+
+* Mail can no longer change or remove events that did not arrive by mail.
+  A CANCEL or REQUEST with the UID of an event made by hand (for example
+  in Nextcloud) used to remove or overwrite it.
+* A CANCEL or REQUEST for an invitation is only applied when it comes from
+  the organizer that sent the invitation; others are ignored and logged.
+* A REQUEST without ORGANIZER is no longer imported.
+* New option "Only read mail from the last (days)", default 14 (IMAP
+  `SINCE`). Pointing an entry at a folder with history no longer imports
+  every invitation ever received. Existing entries get 14 days too; set 0
+  to read the whole folder as before.
+* Invitations that could not be sent are now still resent after a restart
+  (the pending list was saved but not read back).
+* README: filtering who may send invitations with a Sieve rule.
+
+Note for an .ics file carried over from another tool: events already in it
+did not arrive through this integration, so mail no longer changes them.
+
 ## 1.0.0 (2026-10-06)
 
 First stable release.

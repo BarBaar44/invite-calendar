@@ -160,3 +160,38 @@ def test_retention_on_shared_store_prunes_managed_only() -> None:
     )
     assert outcome.pruned == ["mine"]
     assert events.all_uids(cal) == {"theirs"}
+
+
+async def test_mail_never_changes_a_hand_made_event(
+    hass: HomeAssistant,
+    caldav_server: FakeCalDav,
+    mailbox: FakeMailbox,
+    caldav_entry: MockConfigEntry,
+) -> None:
+    """Someone who knows the UID of an event made in Nextcloud can neither
+    cancel nor overwrite it by mail; the messages are still flagged."""
+    dentist = caldav_server.put_raw(
+        "by-hand.ics", ical(vev("dentist", future(3), organizer="me@example.com"))
+    )
+    before = caldav_server.resources[dentist]
+    caldav_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(caldav_entry.entry_id)
+    await hass.async_block_till_done()
+
+    cancel = mailbox.add(
+        mail(
+            "CANCEL",
+            [vev("dentist", future(3), seq=1, organizer="me@example.com")],
+            "m1",
+        )
+    )
+    request = mailbox.add(
+        mail("REQUEST", [vev("dentist", future(4), seq=2, summary="moved")], "m2")
+    )
+    await poll(hass, caldav_entry)
+
+    assert {cancel, request} <= mailbox.flagged
+    assert caldav_server.writes() == []
+    assert caldav_server.resources[dentist] == before
+    assert caldav_entry.runtime_data.state.organizer == {}
+    await hass.config_entries.async_unload(caldav_entry.entry_id)

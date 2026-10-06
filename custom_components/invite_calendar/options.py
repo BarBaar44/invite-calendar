@@ -20,6 +20,7 @@ from .const import (
     CONF_ACCEPT_POLICY,
     CONF_ATTENDEE_CN,
     CONF_FROM_NAME,
+    CONF_LOOKBACK_DAYS,
     CONF_MISSING_LOCATION_REPLY,
     CONF_MISSING_LOCATION_TEXT,
     CONF_RETENTION_DAYS,
@@ -30,6 +31,7 @@ from .const import (
     CONF_SMTP_SECTION,
     CONF_SMTP_USERNAME,
     CONF_STORE_TYPE,
+    DEFAULT_LOOKBACK_DAYS,
     DEFAULT_MISSING_LOCATION_TEXT,
     DEFAULT_RETENTION_DAYS_CALDAV,
     DEFAULT_RETENTION_DAYS_ICS,
@@ -48,6 +50,7 @@ class EntryOptions:
     missing_location_reply: bool
     missing_location_text: str
     retention_days: int
+    lookback_days: int
     scan_interval: timedelta
     from_name: str
     attendee_cn: str
@@ -85,6 +88,7 @@ def resolve(
     """Options with every default filled in."""
     minutes = options.get(CONF_SCAN_INTERVAL_MINUTES)
     retention = options.get(CONF_RETENTION_DAYS)
+    lookback = options.get(CONF_LOOKBACK_DAYS)
     return EntryOptions(
         accept_policy=options.get(CONF_ACCEPT_POLICY, ACCEPT_NEVER),
         missing_location_reply=bool(options.get(CONF_MISSING_LOCATION_REPLY, False)),
@@ -93,6 +97,7 @@ def resolve(
         retention_days=int(retention)
         if retention is not None
         else default_retention(data),
+        lookback_days=int(lookback) if lookback is not None else DEFAULT_LOOKBACK_DAYS,
         scan_interval=timedelta(minutes=int(minutes))
         if minutes
         else DEFAULT_SCAN_INTERVAL,

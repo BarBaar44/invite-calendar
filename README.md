@@ -76,6 +76,7 @@ Settings, Devices & services, Invite Calendar, the entry, **Configure**.
 | Accept invitations | Never | Never, Always, If it has a location, or Manual (only the `accept_event` action accepts, so an automation decides) |
 | Ask for a missing location | off | Email the organizer of an invitation without a location, with your sentence on why it matters |
 | Remove events after | 30 days (.ics), 0 (CalDAV) | 0 keeps everything; on CalDAV only events that arrived by mail are ever removed |
+| Only read mail from the last | 14 days | Mail that arrived earlier is left alone (IMAP `SINCE`, whole days); 0 reads the whole folder |
 | Check the mailbox every | 5 minutes | |
 | Sender name, Name in replies | "<name> Calendar", "<name>" | Display names on outgoing mail |
 | Outgoing mail (SMTP) | mailbox host and login, port 587 | Override host, port (465 for implicit TLS), username, password |
@@ -95,7 +96,38 @@ Processed mail gets a private IMAP keyword (default
 `InviteCalendarProcessed`). The integration never marks mail as read and
 never moves or deletes it, so opening a message in webmail changes nothing.
 Changing the keyword later makes every message in the folder look new, so
-pick it once.
+pick it once. The lookback option limits what that would mean: only mail
+from the last 14 days is read by default.
+
+### Who may send invitations: filter on the mail server
+
+The integration imports every invitation in its folder. To limit who can
+put events in the calendar, let the mail server file allowed invitations
+into a dedicated folder and point the entry at that folder. With Sieve
+(mailcow: Mailbox, Filters; SOGo: Preferences, Mail, Filters):
+
+```sieve
+require ["fileinto", "mailbox", "body"];
+
+# Invitations from these senders go to the Calendar folder.
+if allof (
+  anyof (
+    header :contains "Content-Type" "text/calendar",
+    body :raw :contains "BEGIN:VCALENDAR"
+  ),
+  address :is :all "from" ["partner@example.com", "boss@example.org"]
+) {
+  fileinto :create "Calendar";
+  stop;
+}
+```
+
+Use `address :domain :is "from" "example.org"` for a whole domain. The rule
+checks the From address; a forged From is only stopped when the mail
+server enforces DMARC for that domain (rspamd does for domains with a
+reject policy). A new folder starts empty, so nothing older is imported.
+
+This also keeps a personal INBOX out of the integration entirely.
 
 ## What it does with an invitation
 
@@ -106,6 +138,16 @@ pick it once.
 | CANCEL | the event or whole series is removed |
 | CANCEL for one occurrence | only that occurrence disappears |
 | REPLY and anything else | ignored |
+
+Mail only changes events that arrived by mail, and only when it comes from
+the same organizer:
+
+* an event made by hand in the calendar (or by another system) is never
+  changed or removed by mail, even when the UID matches;
+* a REQUEST or CANCEL for a known event from a different organizer is
+  ignored and logged;
+* a REQUEST without an organizer is not imported;
+* events the calendar organizes itself are never changed by mail.
 
 An invitation that can't be read is retried on the next two polls, then
 skipped with a notification. In an .ics file, events that ended more than

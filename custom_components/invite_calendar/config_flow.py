@@ -42,6 +42,7 @@ from .const import (
     CONF_FOLDER,
     CONF_FROM_NAME,
     CONF_ICS_PATH,
+    CONF_LOOKBACK_DAYS,
     CONF_MISSING_LOCATION_REPLY,
     CONF_MISSING_LOCATION_TEXT,
     CONF_PROCESSED_KEYWORD,
@@ -411,6 +412,9 @@ def _options_schema() -> vol.Schema:
             vol.Required(CONF_RETENTION_DAYS): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=3650, step=1, mode=number)
             ),
+            vol.Required(CONF_LOOKBACK_DAYS): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=3650, step=1, mode=number)
+            ),
             vol.Required(CONF_SCAN_INTERVAL_MINUTES): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=1, max=1440, step=1, mode=number)
             ),
@@ -446,7 +450,7 @@ def _clean(user_input: dict[str, Any], previous: Mapping[str, Any]) -> dict[str,
             value = value.strip()
             if not value:
                 continue
-        if key in (CONF_RETENTION_DAYS, CONF_SCAN_INTERVAL_MINUTES):
+        if key in (CONF_RETENTION_DAYS, CONF_LOOKBACK_DAYS, CONF_SCAN_INTERVAL_MINUTES):
             value = int(value)
         out[key] = value
     smtp_in = dict(user_input.get(CONF_SMTP_SECTION) or {})
@@ -501,6 +505,7 @@ class InviteCalendarOptionsFlow(OptionsFlowWithReload):
             CONF_MISSING_LOCATION_REPLY: current.missing_location_reply,
             CONF_MISSING_LOCATION_TEXT: current.missing_location_text,
             CONF_RETENTION_DAYS: current.retention_days,
+            CONF_LOOKBACK_DAYS: current.lookback_days,
             CONF_SCAN_INTERVAL_MINUTES: int(
                 current.scan_interval.total_seconds() // 60
             ),

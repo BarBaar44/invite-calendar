@@ -10,10 +10,16 @@ Differences from the pyscript version, both deliberate:
 * Bodies are fetched with BODY.PEEK[] instead of RFC822, which sets \\Seen
   as a side effect. Processing is tracked with a private keyword only, so
   the poll never changes what a person sees in webmail.
+
+LOOKBACK. With lookback_days set, only mail that arrived on or after that
+many days ago is searched (SINCE, on the server's arrival date, whole days).
+Older unprocessed mail is left alone and never flagged; raising the setting
+later reads it after all.
 """
 
 from __future__ import annotations
 
+import datetime
 import imaplib
 import ssl
 from collections.abc import Iterator
@@ -58,6 +64,8 @@ class ImapSettings:
     password: str
     folder: str
     keyword: str
+    # 0: the whole folder.
+    lookback_days: int = 0
 
 
 def _quote(folder: str) -> str:
@@ -96,6 +104,30 @@ def _session(cfg: ImapSettings, readonly: bool) -> Iterator[imaplib.IMAP4_SSL]:
             imap.logout()
 
 
+_MONTHS = (
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)  # fmt: skip
+
+
+def search_criteria(
+    cfg: ImapSettings, today: datetime.date | None = None
+) -> tuple[str, ...]:
+    """UID SEARCH criteria for unprocessed mail within the lookback window.
+    The date is formatted by hand: strftime("%b") follows the locale, IMAP
+    wants English month names."""
+    criteria: tuple[str, ...] = ("UNKEYWORD", cfg.keyword)
+    if cfg.lookback_days > 0:
+        since = (today or datetime.date.today()) - datetime.timedelta(
+            days=cfg.lookback_days
+        )
+        criteria += (
+            "SINCE",
+            f"{since.day:02d}-{_MONTHS[since.month - 1]}-{since.year}",
+        )
+    return criteria
+
+
 def validate(cfg: ImapSettings) -> None:
     """Log in, select the folder (read write) and check that private keywords
     can be stored. Raises an ImapError subclass describing what is wrong."""
@@ -109,11 +141,12 @@ def validate(cfg: ImapSettings) -> None:
 
 def fetch_unprocessed(cfg: ImapSettings) -> list[tuple[str, bytes]]:
     """[(uid, raw_rfc822_bytes), ...] for messages without the processed
-    keyword, oldest first, at most MAX_MESSAGES_PER_POLL."""
+    keyword that arrived within the lookback window, oldest first, at most
+    MAX_MESSAGES_PER_POLL."""
     messages: list[tuple[str, bytes]] = []
     with _session(cfg, readonly=True) as imap:
         try:
-            status, data = imap.uid("SEARCH", None, "UNKEYWORD", cfg.keyword)
+            status, data = imap.uid("SEARCH", None, *search_criteria(cfg))
         except imaplib.IMAP4.error as err:
             raise ImapConnectError(f"search: {err}") from err
         if status != "OK" or not data or not data[0]:
