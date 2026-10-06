@@ -131,7 +131,7 @@ def caldav_server() -> Generator[FakeCalDav]:
     """Every CalDAV store talks to this in memory server."""
     server = FakeCalDav()
     with patch(
-        "custom_components.invite_calendar.store.caldav.async_get_clientsession",
+        "custom_components.invite_calendar.store.caldav.async_get_caldav_session",
         return_value=server,
     ):
         yield server

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.1 (2026-10-06)
+
+* CalDAV: correcting the username of a Nextcloud calendar no longer keeps
+  failing with HTTP 404. CalDAV requests went through Home Assistant's
+  shared web session, which kept Nextcloud's session cookies; Nextcloud
+  then kept serving every later request as the first user, whatever
+  username and app password were sent. CalDAV now uses its own session
+  without cookies, so each request is checked against its own login. TLS
+  verification is unchanged. A restart is no longer needed to recover from
+  a wrong username.
+
 ## 1.1.0
 
 * New accept policy "If the time is free": accept an invitation when
