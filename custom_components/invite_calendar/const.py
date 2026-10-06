@@ -35,6 +35,7 @@ CONF_ACCEPT_POLICY: Final = "accept_policy"
 CONF_MISSING_LOCATION_REPLY: Final = "missing_location_reply"
 CONF_MISSING_LOCATION_TEXT: Final = "missing_location_text"
 CONF_RETENTION_DAYS: Final = "retention_days"
+CONF_LOOKBACK_DAYS: Final = "lookback_days"
 CONF_SCAN_INTERVAL_MINUTES: Final = "scan_interval_minutes"
 CONF_FROM_NAME: Final = "from_name"
 CONF_ATTENDEE_CN: Final = "attendee_cn"
@@ -69,6 +70,10 @@ DEFAULT_RETENTION_DAYS_ICS: Final = 30
 # prunes managed events.
 DEFAULT_RETENTION_DAYS_CALDAV: Final = 0
 MAX_MESSAGE_ATTEMPTS: Final = 3
+# Only mail that arrived this many days ago or later is read (IMAP SINCE);
+# 0 reads the whole folder. Keeps a folder with history from importing
+# every invitation it ever received.
+DEFAULT_LOOKBACK_DAYS: Final = 14
 
 # Bus events
 EVENT_UPDATED: Final = "invite_calendar_updated"

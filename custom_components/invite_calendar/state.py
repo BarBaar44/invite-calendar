@@ -90,6 +90,7 @@ class StateStore:
             failed={k: int(v) for k, v in (data.get("failed") or {}).items()},
             sent=dict(data.get("sent") or {}),
             rsvp_failed={k: int(v) for k, v in (data.get("rsvp_failed") or {}).items()},
+            pending={k: int(v) for k, v in (data.get("pending") or {}).items()},
         )
 
     async def async_save(self, state: EntryState) -> None:

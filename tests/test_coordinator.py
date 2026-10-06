@@ -265,3 +265,15 @@ def test_process_messages_retention_and_state() -> None:
     assert outcome.pruned == ["old"]
     assert events.all_uids(cal) == {"new"}
     assert state.organizer == {"new": "boss@ext.com"}
+
+
+async def test_pending_survives_restart(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mailbox: FakeMailbox
+) -> None:
+    """A REQUEST that could not be sent before a restart is still resent."""
+    from custom_components.invite_calendar.state import EntryState, StateStore
+
+    store = StateStore(hass, mock_config_entry.entry_id)
+    await store.async_save(EntryState(organizer={"x": "a@b"}, pending={"x": 2}))
+    loaded = await StateStore(hass, mock_config_entry.entry_id).async_load()
+    assert loaded.pending == {"x": 2}

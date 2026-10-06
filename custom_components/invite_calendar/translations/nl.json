@@ -294,6 +294,7 @@
           "missing_location_reply": "Vragen om een ontbrekende locatie",
           "missing_location_text": "Waarom de locatie nodig is",
           "retention_days": "Afspraken zoveel dagen na afloop verwijderen",
+          "lookback_days": "Alleen mail van de afgelopen (dagen) lezen",
           "scan_interval_minutes": "Mailbox controleren elke (minuten)",
           "from_name": "Naam afzender",
           "attendee_cn": "Naam in antwoorden"
@@ -303,6 +304,7 @@
           "missing_location_reply": "Mail de organisator van een uitnodiging zonder locatie.",
           "missing_location_text": "Eén zin, opgenomen in die mail.",
           "retention_days": "0 bewaart alles. In een CalDAV agenda worden alleen afspraken verwijderd die per mail binnenkwamen.",
+          "lookback_days": "0 leest de hele map. Oudere onverwerkte mail blijft liggen; wordt dit later verhoogd, dan wordt die alsnog gelezen.",
           "from_name": "Weergavenaam op uitgaande mail.",
           "attendee_cn": "Hoe de agenda heet in zijn acceptatie."
         },

@@ -374,8 +374,12 @@ async def test_cancel_one_occurrence(
 
     # An attendee applying it loses exactly that occurrence.
     theirs = events.new_calendar()
-    apply_message(email.message_from_bytes(outbox.sent[0].as_bytes()), theirs)
-    apply_message(email.message_from_bytes(outbox.sent[-1].as_bytes()), theirs)
+    first = apply_message(email.message_from_bytes(outbox.sent[0].as_bytes()), theirs)
+    apply_message(
+        email.message_from_bytes(outbox.sent[-1].as_bytes()),
+        theirs,
+        managed=first.organizers,
+    )
     assert events.find_event(theirs, uid).get("EXDATE") is not None
 
 

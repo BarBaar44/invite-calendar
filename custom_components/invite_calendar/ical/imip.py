@@ -14,12 +14,24 @@ applied as a set:
   CANCEL with the master     the whole series is removed
   CANCEL with RECURRENCE-ID  that instance only (override removed, EXDATE
                              added to the master)
+
+WHO MAY CHANGE WHAT. Mail only ever changes events that arrived by mail
+("managed": the UID is in the entry's organizer map), and only when the
+message's ORGANIZER is the one that sent the event in the first place:
+  * a UID already in the calendar but not managed (made by hand in
+    Nextcloud, or by another system) is never changed or removed;
+  * a REQUEST or CANCEL for a managed UID from another organizer is
+    ignored, so knowing a UID is not enough to overwrite or cancel it;
+  * a REQUEST without ORGANIZER is not imported (RFC 5546 requires one,
+    and without it nothing could ever update or cancel the event).
+Events this calendar organizes itself are never changed by mail at all.
 """
 
 from __future__ import annotations
 
 import datetime
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from email.message import Message
 
@@ -56,6 +68,8 @@ class MessageResult:
     organizers: dict[str, str] = field(default_factory=dict)
     cancelled: list[str] = field(default_factory=list)
     received: list[ReceivedInvite] = field(default_factory=list)
+    # UIDs a message tried to change but was not allowed to.
+    refused: list[str] = field(default_factory=list)
 
 
 DATE_PROPS = ("DTSTART", "DTEND", "RECURRENCE-ID")
@@ -106,14 +120,53 @@ def calendar_parts(msg: Message) -> list[tuple[str, bytes]]:
     return out
 
 
+def refusal(
+    method: str,
+    uid: str,
+    organizer: str | None,
+    cal: Calendar,
+    managed: Mapping[str, str],
+    own_address: str | None,
+) -> str | None:
+    """Why `method` from `organizer` may not touch `uid`, or None when it
+    may. See WHO MAY CHANGE WHAT in the module docstring."""
+    sender = (organizer or "").lower()
+    own = (own_address or "").lower()
+    known = managed.get(uid)
+    if known is not None:
+        if own and known.lower() == own:
+            return "organized by this calendar"
+        if sender != known.lower():
+            return f"organizer {organizer or 'missing'} is not {known}"
+        return None
+    stored = events.find_event(cal, uid)
+    if stored is not None:
+        stored_org = events.get_organizer_email(stored)
+        if own and stored_org and stored_org.lower() == own:
+            return "organized by this calendar"
+        return "event was not received by mail"
+    if method == "REQUEST" and not sender:
+        return "no ORGANIZER"
+    if own and sender == own:
+        # Our own invitation coming back (forwarded, or a copy to self).
+        return "organized by this calendar"
+    return None
+
+
 def apply_message(
-    msg: Message, cal: Calendar, name: str = "", own_address: str | None = None
+    msg: Message,
+    cal: Calendar,
+    name: str = "",
+    own_address: str | None = None,
+    managed: Mapping[str, str] | None = None,
 ) -> MessageResult:
     """Apply one email's calendar parts to `cal`.
 
-    Events this calendar organizes itself (ORGANIZER is `own_address`) are
-    never changed by mail: Home Assistant is authoritative for them, and an
-    attendee forwarding the invite back must not overwrite it.
+    `managed` is the entry's organizer map {uid: organizer}: the events that
+    arrived by mail or were created through the services. Only those can be
+    changed by mail, and only by their own organizer (see the module
+    docstring). Events this calendar organizes itself (`own_address`) are
+    never changed by mail: Home Assistant is authoritative for them.
 
     A calendar part that does not parse at all is skipped with a warning.
     Raises ValueError on a VEVENT that parses but can't be stored safely,
@@ -122,6 +175,8 @@ def apply_message(
     result = MessageResult()
     seen: set[tuple[str, str]] = set()
     prefix = f"[{name}] " if name else ""
+    # Organizers recorded by earlier parts of this same message count too.
+    known: dict[str, str] = dict(managed or {})
 
     for ctype, payload in calendar_parts(msg):
         try:
@@ -148,20 +203,18 @@ def apply_message(
                 continue
             seen.add((method, uid))
 
-            if own_address:
-                stored = events.find_event(cal, uid)
-                stored_org = events.get_organizer_email(stored) if stored else None
-                if stored_org and stored_org.lower() == own_address.lower():
-                    _LOGGER.info(
-                        "%signoring %s for %s: organized by this calendar",
-                        prefix,
-                        method,
-                        uid,
-                    )
-                    continue
-
             masters = [c for c in components if events.recurrence_key(c) is None]
             master = masters[0] if masters else None
+            # Per series, from the master; an invite to a single instance of
+            # someone else's series has no master, its override stands in.
+            primary = master if master is not None else components[0]
+            organizer = events.get_organizer_email(primary)
+
+            why = refusal(method, uid, organizer, cal, known, own_address)
+            if why is not None:
+                _LOGGER.warning("%signoring %s for %s: %s", prefix, method, uid, why)
+                result.refused.append(uid)
+                continue
 
             if method == "CANCEL":
                 if master is not None:
@@ -169,6 +222,7 @@ def apply_message(
                         result.changed = True
                         _LOGGER.info("%scancelled event %s", prefix, uid)
                     result.cancelled.append(uid)
+                    known.pop(uid, None)
                     continue
                 for c in components:
                     if events.cancel_occurrence(cal, uid, c["RECURRENCE-ID"]):
@@ -188,12 +242,9 @@ def apply_message(
             result.changed = True
             _LOGGER.info("%sadded/updated %s", prefix, uid)
 
-            # Per series, from the master; an invite to a single instance of
-            # someone else's series has no master, its override stands in.
-            primary = master if master is not None else components[0]
-            organizer = events.get_organizer_email(primary)
             if organizer:
                 result.organizers[uid] = organizer
+                known[uid] = organizer
             start = primary.get("DTSTART")
             location = primary.get("LOCATION")
             result.received.append(

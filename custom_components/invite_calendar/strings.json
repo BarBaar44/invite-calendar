@@ -294,6 +294,7 @@
           "missing_location_reply": "Ask for a missing location",
           "missing_location_text": "Why the location is needed",
           "retention_days": "Remove events this many days after they ended",
+          "lookback_days": "Only read mail from the last (days)",
           "scan_interval_minutes": "Check the mailbox every (minutes)",
           "from_name": "Sender name",
           "attendee_cn": "Name in replies"
@@ -303,6 +304,7 @@
           "missing_location_reply": "Email the organizer of an invitation without a location.",
           "missing_location_text": "One sentence, included in that email.",
           "retention_days": "0 keeps everything. On a CalDAV calendar only events that arrived by mail are ever removed.",
+          "lookback_days": "0 reads the whole folder. Older unprocessed mail is left alone; raising this later reads it after all.",
           "from_name": "Display name on outgoing mail.",
           "attendee_cn": "How the calendar is named in its acceptance."
         },
