@@ -4,8 +4,10 @@
      "accepted":  {uid: sequence},     RSVPs sent (milestone 3)
      "failed":    {message_id: n},     processing attempts per message
      "sent":      {uid: message_id},   our own outbound invites (milestone 3b)
-     "rsvp_failed": {uid: sequence}}   RSVP permanently refused for this
+     "rsvp_failed": {uid: sequence},   RSVP permanently refused for this
                                        sequence; tried again after an update
+     "pending":   {uid: sequence}}     own event saved but its REQUEST not
+                                       sent yet; resent on the next poll
 
 "Managed" means the UID is in `organizer`: it arrived through the mailbox
 (or, later, was created through the services).
@@ -31,6 +33,16 @@ class EntryState:
     failed: dict[str, int] = field(default_factory=dict)
     sent: dict[str, str] = field(default_factory=dict)
     rsvp_failed: dict[str, int] = field(default_factory=dict)
+    pending: dict[str, int] = field(default_factory=dict)
+
+    def _per_uid(self) -> tuple[dict, ...]:
+        return (
+            self.organizer,
+            self.accepted,
+            self.sent,
+            self.rsvp_failed,
+            self.pending,
+        )
 
     def as_dict(self) -> dict[str, Any]:
         """JSON document."""
@@ -40,13 +52,14 @@ class EntryState:
             "failed": self.failed,
             "sent": self.sent,
             "rsvp_failed": self.rsvp_failed,
+            "pending": self.pending,
         }
 
     def forget(self, uids: list[str] | set[str]) -> bool:
         """Drop every per UID entry for these UIDs. True if anything went."""
         changed = False
         for uid in uids:
-            for mapping in (self.organizer, self.accepted, self.sent, self.rsvp_failed):
+            for mapping in self._per_uid():
                 if mapping.pop(uid, None) is not None:
                     changed = True
         return changed
@@ -54,10 +67,7 @@ class EntryState:
     def prune_to(self, live: set[str]) -> bool:
         """Drop per UID entries whose UID is no longer in the calendar."""
         stale = {
-            uid
-            for mapping in (self.organizer, self.accepted, self.sent, self.rsvp_failed)
-            for uid in mapping
-            if uid not in live
+            uid for mapping in self._per_uid() for uid in mapping if uid not in live
         }
         return self.forget(stale)
 

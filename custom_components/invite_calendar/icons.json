@@ -8,6 +8,15 @@
     },
     "list_events": {
       "service": "mdi:calendar-search"
+    },
+    "create_event": {
+      "service": "mdi:calendar-plus"
+    },
+    "update_event": {
+      "service": "mdi:calendar-edit"
+    },
+    "cancel_event": {
+      "service": "mdi:calendar-remove"
     }
   }
 }

@@ -1,9 +1,10 @@
 """Outbound mail (ported from pyscript imip_mail). BLOCKING: run every send
 through hass.async_add_executor_job.
 
-  send_accept_reply()            iMIP REPLY, PARTSTAT=ACCEPTED
-  send_missing_location_reply()  plain threaded reply asking for a LOCATION
-  (send_invite() for REQUEST/CANCEL arrives in milestone 3b)
+  build_invite()                 iMIP REQUEST / CANCEL for events this
+                                 calendar organizes
+  build_accept_reply()           iMIP REPLY, PARTSTAT=ACCEPTED
+  build_missing_location_reply() plain threaded reply asking for a LOCATION
 
 SENDER IDENTITY. RFC 6047: From: must be the ATTENDEE for a REPLY. The
 calendar's own address is the IMAP username and SMTP defaults to the same
@@ -11,8 +12,11 @@ login, so From equals the login, mailcow's sender check passes and DMARC
 aligns. When the SMTP login differs, a Sender: header is added; mailcow
 rejects that unless the login may send as the calendar address.
 
-MESSAGE STRUCTURE. A REPLY keeps an inline text/calendar part (its reader is
-a calendar server) inside multipart/alternative with a text part.
+MESSAGE STRUCTURE. REQUEST/CANCEL is text/plain plus an application/ics
+attachment, with NO inline text/calendar part: Gmail on an IMAP account
+printed the raw VCALENDAR into the body and never shows an invite card for
+non Google accounts anyway. A REPLY keeps an inline text/calendar part (its
+reader is a calendar server) inside multipart/alternative with a text part.
 
 TRANSPORT. Port 465 uses implicit TLS, anything else STARTTLS (587 by
 default). A send is tried twice for transient errors; a refused sender or
@@ -26,8 +30,10 @@ import logging
 import smtplib
 import ssl
 from dataclasses import dataclass
+from email import encoders
 from email.header import decode_header, make_header
 from email.message import Message
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, formatdate, make_msgid
@@ -224,6 +230,51 @@ def build_accept_reply(
     cal_part.set_param("component", "VEVENT")
     alternative.attach(cal_part)
     outer.attach(alternative)
+    return outer
+
+
+def build_invite(
+    cfg: SmtpSettings,
+    from_name: str,
+    organizer_addr: str,
+    to_addrs: list[str],
+    components: list[Event],
+    method: str,
+    subject: str,
+    body: str,
+    in_reply_to: str | None = None,
+    prodid: str = events.PRODID,
+) -> Message:
+    """An iMIP REQUEST or CANCEL for `components` (one UID: a master and
+    its overrides, or a single instance). The caller has set DTSTAMP and,
+    for updates and cancellations, a higher SEQUENCE."""
+    cal = Calendar()
+    cal.add("prodid", prodid)
+    cal.add("version", "2.0")
+    cal.add("method", method)
+    cal.add("calscale", "GREGORIAN")
+    for component in components:
+        cal.add_component(component)
+    try:
+        cal.add_missing_timezones()
+    except Exception:  # noqa: BLE001 - a missing VTIMEZONE is not fatal
+        _LOGGER.debug("Could not add missing timezones", exc_info=True)
+
+    outer = MIMEMultipart("mixed")
+    outer["Subject"] = subject
+    _headers(outer, cfg, from_name, organizer_addr, ", ".join(to_addrs))
+    outer["Reply-To"] = organizer_addr
+    if in_reply_to:
+        outer["In-Reply-To"] = in_reply_to
+        outer["References"] = in_reply_to
+    outer.attach(MIMEText(body, "plain", "utf-8"))
+
+    name = "cancel.ics" if method == "CANCEL" else "invite.ics"
+    attachment = MIMEBase("application", "ics", name=name)
+    attachment.set_payload(cal.to_ical())
+    encoders.encode_base64(attachment)
+    attachment.add_header("Content-Disposition", "attachment", filename=name)
+    outer.attach(attachment)
     return outer
 
 

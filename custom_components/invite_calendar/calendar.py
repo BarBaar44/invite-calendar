@@ -20,6 +20,7 @@ from . import InviteCalendarConfigEntry
 from .const import DOMAIN
 from .coordinator import InviteCalendarCoordinator
 from .ical.events import aware, get_attendee_emails, get_organizer_email
+from .outbound import EventFields
 from .state import EntryState
 
 _LOGGER = logging.getLogger(__name__)
@@ -115,6 +116,7 @@ def list_occurrences(
     start: datetime.datetime,
     end: datetime.datetime,
     state: EntryState,
+    own_address: str = "",
 ) -> list[dict[str, Any]]:
     """Service list_events: what calendar.get_events leaves out (UID,
     organizer, attendees, managed, accepted) for every occurrence."""
@@ -122,6 +124,7 @@ def list_occurrences(
     for component, event in _occurrences(cal, start, end):
         uid = event.uid or ""
         seq = int(component.get("SEQUENCE", 0))
+        organizer = get_organizer_email(component)
         out.append(
             {
                 "uid": uid,
@@ -132,7 +135,7 @@ def list_occurrences(
                 "summary": event.summary,
                 "description": event.description,
                 "location": event.location,
-                "organizer": get_organizer_email(component),
+                "organizer": organizer,
                 "attendees": get_attendee_emails(component),
                 "status": str(component.get("STATUS"))
                 if component.get("STATUS")
@@ -140,6 +143,11 @@ def list_occurrences(
                 "sequence": seq,
                 "managed": uid in state.organizer,
                 "accepted": state.accepted.get(uid) == seq,
+                # Organized by this calendar (create_event): it can be
+                # changed with update_event / cancel_event.
+                "own": bool(organizer)
+                and bool(own_address)
+                and organizer.lower() == own_address.lower(),
             }
         )
     return out
@@ -245,6 +253,71 @@ class InviteCalendarEntity(
         if cal is None:
             return {"events": []}
         occurrences = await self.hass.async_add_executor_job(
-            list_occurrences, cal, start, end, self.coordinator.state
+            list_occurrences,
+            cal,
+            start,
+            end,
+            self.coordinator.state,
+            self.coordinator.options.address,
         )
         return {"events": occurrences}
+
+    async def async_create_event(
+        self,
+        summary: str,
+        start_date_time: datetime.datetime | None = None,
+        start_date: datetime.date | None = None,
+        end_date_time: datetime.datetime | None = None,
+        end_date: datetime.date | None = None,
+        description: str | None = None,
+        location: str | None = None,
+        attendees: list[str] | None = None,
+        rrule: str | None = None,
+    ) -> ServiceResponse:
+        """Service invite_calendar.create_event."""
+        return await self.coordinator.async_create(
+            EventFields(
+                summary=summary,
+                description=description,
+                location=location,
+                start=start_date_time or start_date,
+                end=end_date_time or end_date,
+                rrule=rrule,
+                attendees=attendees or [],
+            )
+        )
+
+    async def async_update_event(
+        self,
+        uid: str,
+        recurrence_id: str | None = None,
+        summary: str | None = None,
+        start_date_time: datetime.datetime | None = None,
+        start_date: datetime.date | None = None,
+        end_date_time: datetime.datetime | None = None,
+        end_date: datetime.date | None = None,
+        description: str | None = None,
+        location: str | None = None,
+        attendees: list[str] | None = None,
+        rrule: str | None = None,
+    ) -> ServiceResponse:
+        """Service invite_calendar.update_event."""
+        return await self.coordinator.async_update(
+            uid,
+            recurrence_id,
+            EventFields(
+                summary=summary,
+                description=description,
+                location=location,
+                start=start_date_time or start_date,
+                end=end_date_time or end_date,
+                rrule=rrule,
+                attendees=attendees,
+            ),
+        )
+
+    async def async_cancel_event(
+        self, uid: str, recurrence_id: str | None = None
+    ) -> ServiceResponse:
+        """Service invite_calendar.cancel_event."""
+        return await self.coordinator.async_cancel(uid, recurrence_id)

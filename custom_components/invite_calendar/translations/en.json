@@ -118,6 +118,30 @@
     },
     "end_before_start": {
       "message": "The end must be after the start."
+    },
+    "invalid_rrule": {
+      "message": "Not a valid repeat rule: {rrule}"
+    },
+    "invalid_attendee": {
+      "message": "Not an email address: {attendee}"
+    },
+    "mixed_date_types": {
+      "message": "Start and end must both be dates or both be date and time."
+    },
+    "summary_and_start_required": {
+      "message": "A summary and a start are required."
+    },
+    "event_not_own": {
+      "message": "Event {uid} is organized by someone else; only events this calendar organizes can be changed."
+    },
+    "invalid_recurrence_id": {
+      "message": "Event has no occurrence at {recurrence_id}."
+    },
+    "not_recurring": {
+      "message": "Event {uid} does not repeat."
+    },
+    "rrule_on_occurrence": {
+      "message": "A repeat rule can only be changed on the whole series."
     }
   },
   "services": {
@@ -150,6 +174,112 @@
         "duration": {
           "name": "Duration",
           "description": "Length of the window when no end is given. Default: 7 days."
+        }
+      }
+    },
+    "create_event": {
+      "name": "Create event",
+      "description": "Adds an event organized by this calendar and emails the invitation to the attendees. Returns the UID.",
+      "fields": {
+        "summary": {
+          "name": "Summary",
+          "description": "Title of the event."
+        },
+        "start_date_time": {
+          "name": "Start",
+          "description": "Start date and time. Naive times are local."
+        },
+        "end_date_time": {
+          "name": "End",
+          "description": "End date and time. Default: one hour after the start."
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "Start of an all day event."
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "Day after the last day of an all day event. Default: one day."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Free text, kept as is (markers for automations are safe here)."
+        },
+        "location": {
+          "name": "Location",
+          "description": "Where the event takes place."
+        },
+        "attendees": {
+          "name": "Attendees",
+          "description": "Email addresses that receive the invitation."
+        },
+        "rrule": {
+          "name": "Repeat",
+          "description": "RFC 5545 rule, for example FREQ=WEEKLY;COUNT=4 or FREQ=DAILY;UNTIL=20261231. Empty in update_event stops the repetition."
+        }
+      }
+    },
+    "update_event": {
+      "name": "Update event",
+      "description": "Changes an event this calendar organizes, or one occurrence of it, and emails the update. Fields left out stay as they are; removed attendees get a cancellation.",
+      "fields": {
+        "uid": {
+          "name": "UID",
+          "description": "UID of an event this calendar organizes, as returned by create_event or list_events."
+        },
+        "recurrence_id": {
+          "name": "Occurrence",
+          "description": "recurrence_id from list_events: change or cancel only that occurrence of a series."
+        },
+        "summary": {
+          "name": "Summary",
+          "description": "Title of the event."
+        },
+        "start_date_time": {
+          "name": "Start",
+          "description": "Start date and time. Naive times are local."
+        },
+        "end_date_time": {
+          "name": "End",
+          "description": "End date and time. Default: one hour after the start."
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "Start of an all day event."
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "Day after the last day of an all day event. Default: one day."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Free text, kept as is (markers for automations are safe here)."
+        },
+        "location": {
+          "name": "Location",
+          "description": "Where the event takes place."
+        },
+        "attendees": {
+          "name": "Attendees",
+          "description": "Email addresses that receive the invitation."
+        },
+        "rrule": {
+          "name": "Repeat",
+          "description": "RFC 5545 rule, for example FREQ=WEEKLY;COUNT=4 or FREQ=DAILY;UNTIL=20261231. Empty in update_event stops the repetition."
+        }
+      }
+    },
+    "cancel_event": {
+      "name": "Cancel event",
+      "description": "Cancels an event this calendar organizes, or one occurrence of it, and emails the cancellation. If the mail can't be sent nothing changes.",
+      "fields": {
+        "uid": {
+          "name": "UID",
+          "description": "UID of an event this calendar organizes, as returned by create_event or list_events."
+        },
+        "recurrence_id": {
+          "name": "Occurrence",
+          "description": "recurrence_id from list_events: change or cancel only that occurrence of a series."
         }
       }
     }

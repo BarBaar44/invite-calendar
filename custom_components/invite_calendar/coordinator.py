@@ -59,6 +59,16 @@ from .ical import events
 from .ical.imip import ReceivedInvite, apply_message
 from .mail import imap, smtp
 from .options import EntryOptions
+from .outbound import (
+    EventFields,
+    OutboundError,
+    cancel_occurrence_own,
+    cancel_series,
+    describe,
+    new_event,
+    update_occurrence,
+    update_series,
+)
 from .replies import rsvp_candidates
 from .state import EntryState, StateStore
 from .store import Diff, StoreAuthError, StoreBackend, StoreError
@@ -83,6 +93,7 @@ def process_messages(
     state: EntryState,
     retention_cutoff: datetime.datetime | None,
     managed_only: bool = False,
+    own_address: str | None = None,
 ) -> ProcessOutcome:
     """Apply messages to `cal` and update `state` (both mutated in place).
 
@@ -96,7 +107,7 @@ def process_messages(
         msg: Message = email.message_from_bytes(raw)
         msg_id = str(msg.get("Message-ID") or f"imap-uid-{imap_uid}")
         try:
-            result = apply_message(msg, cal, name)
+            result = apply_message(msg, cal, name, own_address)
         except Exception as err:  # noqa: BLE001 - any failure: retry or give up
             attempts = state.failed.get(msg_id, 0) + 1
             if attempts >= MAX_MESSAGE_ATTEMPTS:
@@ -226,6 +237,7 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
             new_state,
             cutoff,
             self.store.shared,
+            self.options.address,
         )
 
         try:
@@ -264,18 +276,21 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
 
         await self._async_missing_location_replies(changes, outcome)
         await self._async_rsvp_scan(cal)
+        await self._async_resend_pending(cal)
         self._fire_events(changes, outcome)
         return cal
 
     # ---------------------------------------------------------------- replies
 
-    async def _async_send(self, build, *args) -> None:
-        """Build and send one message in the executor."""
+    async def _async_send(self, build, *args) -> str | None:
+        """Build and send one message in the executor; its Message-ID."""
 
-        def job() -> None:
-            smtp.send(self.options.smtp, build(self.options.smtp, *args))
+        def job() -> str | None:
+            msg = build(self.options.smtp, *args)
+            smtp.send(self.options.smtp, msg)
+            return msg["Message-ID"]
 
-        await self.hass.async_add_executor_job(job)
+        return await self.hass.async_add_executor_job(job)
 
     async def _async_missing_location_replies(
         self, changes: Diff, outcome: ProcessOutcome
@@ -461,3 +476,226 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
                     "removed": changes.removed,
                 },
             )
+
+    # ------------------------------------------------------ own events
+
+    def _invalid(self, err: OutboundError) -> ServiceValidationError:
+        return ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key=err.key,
+            translation_placeholders=err.placeholders or None,
+        )
+
+    def _store_error(self, err: StoreError) -> HomeAssistantError:
+        return HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="store_write_failed",
+            translation_placeholders={
+                "store": self.store.describe(),
+                "error": str(err),
+            },
+        )
+
+    async def _async_load_for_edit(self) -> tuple[Calendar, object]:
+        try:
+            return await self.store.async_load()
+        except StoreError as err:
+            raise self._store_error(err) from err
+
+    async def _async_save_edit(self, cal: Calendar, snapshot) -> Diff:
+        def prepare() -> None:
+            try:
+                cal.add_missing_timezones()
+            except Exception:  # noqa: BLE001 - a missing VTIMEZONE is not fatal
+                _LOGGER.debug("Could not add missing timezones", exc_info=True)
+
+        await self.hass.async_add_executor_job(prepare)
+        try:
+            return await self.store.async_save(cal, snapshot)
+        except StoreError as err:
+            raise self._store_error(err) from err
+
+    async def _async_send_invite(
+        self,
+        method: str,
+        components: list,
+        to: list[str],
+        subject: str,
+        uid: str,
+    ) -> str | None:
+        opts = self.options
+        master = components[0]
+        start = master.get("DTSTART")
+        body = describe(master, smtp.human_start(start.dt if start else None))
+        return await self._async_send(
+            smtp.build_invite,
+            opts.from_name,
+            opts.address,
+            to,
+            components,
+            method,
+            subject,
+            body,
+            self.state.sent.get(uid),
+        )
+
+    async def _async_request(
+        self, uid: str, components: list, seq: int, prefix: str
+    ) -> bool:
+        """Send the REQUEST for an own event; on failure mark it pending
+        (resent next poll). True when sent or nobody to send to."""
+        attendees = events.get_attendee_emails(components[0])
+        if not attendees:
+            self.state.pending.pop(uid, None)
+            return True
+        summary = str(components[0].get("SUMMARY", ""))
+        start = components[0].get("DTSTART")
+        when = smtp.human_start(start.dt if start else None)
+        try:
+            msg_id = await self._async_send_invite(
+                "REQUEST", components, attendees, f"{prefix}{summary} @ {when}", uid
+            )
+        except smtp.SmtpError as err:
+            _LOGGER.warning(
+                "[%s] invitation for %s not sent, retrying next poll: %s",
+                self.config_entry.title,
+                uid,
+                err,
+            )
+            self.state.pending[uid] = seq
+            return False
+        self.state.pending.pop(uid, None)
+        self.state.sent.setdefault(uid, msg_id or "")
+        return True
+
+    async def _async_resend_pending(self, cal: Calendar) -> None:
+        """REQUESTs that failed earlier, for the version still stored."""
+        if not self.state.pending:
+            return
+        dirty = False
+        for uid, seq in list(self.state.pending.items()):
+            comps = sorted(
+                (c for c in cal.walk("VEVENT") if str(c.get("UID")) == uid),
+                key=lambda c: events.recurrence_key(c) is not None,
+            )
+            if not comps or int(comps[0].get("SEQUENCE", 0)) != seq:
+                self.state.pending.pop(uid)
+                dirty = True
+                continue
+            dirty = True
+            if not await self._async_request(uid, comps, seq, "Invitation: "):
+                break
+        if dirty:
+            await self._state_store.async_save(self.state)
+
+    def _after_edit(self, cal: Calendar, changes: Diff) -> None:
+        self.async_set_updated_data(cal)
+        self._fire_events(changes, ProcessOutcome())
+
+    async def async_create(self, fields: EventFields) -> dict[str, object]:
+        """Service create_event."""
+        async with self.lock:
+            opts = self.options
+            try:
+                event = new_event(fields, opts.address, opts.from_name)
+            except OutboundError as err:
+                raise self._invalid(err) from err
+            uid = str(event["UID"])
+            cal, snapshot = await self._async_load_for_edit()
+            cal.add_component(event)
+            changes = await self._async_save_edit(cal, snapshot)
+            self.state.organizer[uid] = opts.address.lower()
+            ok = await self._async_request(uid, [event], 0, "Invitation: ")
+            await self._state_store.async_save(self.state)
+            self._after_edit(cal, changes)
+            _LOGGER.info("[%s] created %s", self.config_entry.title, uid)
+            return {
+                "uid": uid,
+                "invited": events.get_attendee_emails(event),
+                "pending": not ok,
+            }
+
+    async def async_update(
+        self, uid: str, recurrence_id: str | None, fields: EventFields
+    ) -> dict[str, object]:
+        """Service update_event: the whole event/series, or one occurrence."""
+        async with self.lock:
+            opts = self.options
+            cal, snapshot = await self._async_load_for_edit()
+            try:
+                if recurrence_id:
+                    plan = update_occurrence(
+                        cal, uid, recurrence_id, fields, opts.address
+                    )
+                else:
+                    plan = update_series(cal, uid, fields, opts.address)
+            except OutboundError as err:
+                raise self._invalid(err) from err
+            changes = await self._async_save_edit(cal, snapshot)
+            ok = await self._async_request(
+                uid, plan.request, plan.sequence, "Updated invitation: "
+            )
+            if plan.removed_attendees:
+                try:
+                    await self._async_send_invite(
+                        "CANCEL",
+                        plan.cancel,
+                        plan.removed_attendees,
+                        f"Cancelled: {plan.cancel[0].get('SUMMARY', '')}",
+                        uid,
+                    )
+                except smtp.SmtpError as err:
+                    _LOGGER.warning(
+                        "[%s] cancellation for removed attendees of %s not sent: %s",
+                        self.config_entry.title,
+                        uid,
+                        err,
+                    )
+            await self._state_store.async_save(self.state)
+            self._after_edit(cal, changes)
+            return {
+                "uid": uid,
+                "sequence": plan.sequence,
+                "invited": events.get_attendee_emails(plan.request[0]),
+                "removed": plan.removed_attendees,
+                "pending": not ok,
+            }
+
+    async def async_cancel(
+        self, uid: str, recurrence_id: str | None
+    ) -> dict[str, object]:
+        """Service cancel_event. The CANCEL goes out BEFORE the calendar
+        changes: if it can't be sent, nothing changes and the call fails, so
+        attendees are never left with an event that no longer exists here."""
+        async with self.lock:
+            opts = self.options
+            cal, snapshot = await self._async_load_for_edit()
+            try:
+                if recurrence_id:
+                    stubs = cancel_occurrence_own(cal, uid, recurrence_id, opts.address)
+                else:
+                    stubs = cancel_series(cal, uid, opts.address)
+            except OutboundError as err:
+                raise self._invalid(err) from err
+            attendees = events.get_attendee_emails(stubs[0])
+            if attendees:
+                try:
+                    await self._async_send_invite(
+                        "CANCEL",
+                        stubs,
+                        attendees,
+                        f"Cancelled: {stubs[0].get('SUMMARY', '')}",
+                        uid,
+                    )
+                except smtp.SmtpError as err:
+                    raise HomeAssistantError(
+                        translation_domain=DOMAIN,
+                        translation_key="send_failed",
+                        translation_placeholders={"error": str(err)},
+                    ) from err
+            changes = await self._async_save_edit(cal, snapshot)
+            if not recurrence_id:
+                self.state.forget([uid])
+            await self._state_store.async_save(self.state)
+            self._after_edit(cal, changes)
+            return {"uid": uid, "notified": attendees}

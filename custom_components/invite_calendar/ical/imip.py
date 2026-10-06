@@ -106,8 +106,14 @@ def calendar_parts(msg: Message) -> list[tuple[str, bytes]]:
     return out
 
 
-def apply_message(msg: Message, cal: Calendar, name: str = "") -> MessageResult:
+def apply_message(
+    msg: Message, cal: Calendar, name: str = "", own_address: str | None = None
+) -> MessageResult:
     """Apply one email's calendar parts to `cal`.
+
+    Events this calendar organizes itself (ORGANIZER is `own_address`) are
+    never changed by mail: Home Assistant is authoritative for them, and an
+    attendee forwarding the invite back must not overwrite it.
 
     A calendar part that does not parse at all is skipped with a warning.
     Raises ValueError on a VEVENT that parses but can't be stored safely,
@@ -141,6 +147,18 @@ def apply_message(msg: Message, cal: Calendar, name: str = "") -> MessageResult:
             if (method, uid) in seen:
                 continue
             seen.add((method, uid))
+
+            if own_address:
+                stored = events.find_event(cal, uid)
+                stored_org = events.get_organizer_email(stored) if stored else None
+                if stored_org and stored_org.lower() == own_address.lower():
+                    _LOGGER.info(
+                        "%signoring %s for %s: organized by this calendar",
+                        prefix,
+                        method,
+                        uid,
+                    )
+                    continue
 
             masters = [c for c in components if events.recurrence_key(c) is None]
             master = masters[0] if masters else None

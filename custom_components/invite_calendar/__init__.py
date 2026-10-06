@@ -31,8 +31,11 @@ from .const import (
     DOMAIN,
     LOGGER,
     SERVICE_ACCEPT_EVENT,
+    SERVICE_CANCEL_EVENT,
+    SERVICE_CREATE_EVENT,
     SERVICE_LIST_EVENTS,
     SERVICE_POLL,
+    SERVICE_UPDATE_EVENT,
     STORE_CALDAV,
 )
 from .coordinator import InviteCalendarCoordinator
@@ -81,6 +84,51 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         },
         func="async_list_events",
         supports_response=SupportsResponse.ONLY,
+    )
+    fields = {
+        vol.Exclusive("start_date_time", "start"): cv.datetime,
+        vol.Exclusive("start_date", "start"): cv.date,
+        vol.Exclusive("end_date_time", "end"): cv.datetime,
+        vol.Exclusive("end_date", "end"): cv.date,
+        vol.Optional("description"): cv.string,
+        vol.Optional("location"): cv.string,
+        vol.Optional("attendees"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("rrule"): vol.Any(cv.string, ""),
+    }
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_CREATE_EVENT,
+        entity_domain=CALENDAR_DOMAIN,
+        schema={vol.Required("summary"): cv.string, **fields},
+        func="async_create_event",
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_UPDATE_EVENT,
+        entity_domain=CALENDAR_DOMAIN,
+        schema={
+            vol.Required("uid"): cv.string,
+            vol.Optional("recurrence_id"): cv.string,
+            vol.Optional("summary"): cv.string,
+            **fields,
+        },
+        func="async_update_event",
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_CANCEL_EVENT,
+        entity_domain=CALENDAR_DOMAIN,
+        schema={
+            vol.Required("uid"): cv.string,
+            vol.Optional("recurrence_id"): cv.string,
+        },
+        func="async_cancel_event",
+        supports_response=SupportsResponse.OPTIONAL,
     )
     return True
 

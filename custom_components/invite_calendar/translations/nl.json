@@ -118,6 +118,30 @@
     },
     "end_before_start": {
       "message": "Het einde moet na het begin liggen."
+    },
+    "invalid_rrule": {
+      "message": "Geen geldige herhaalregel: {rrule}"
+    },
+    "invalid_attendee": {
+      "message": "Geen e-mailadres: {attendee}"
+    },
+    "mixed_date_types": {
+      "message": "Begin en einde moeten allebei een datum zijn, of allebei datum en tijd."
+    },
+    "summary_and_start_required": {
+      "message": "Een titel en een begin zijn verplicht."
+    },
+    "event_not_own": {
+      "message": "Afspraak {uid} wordt door iemand anders georganiseerd; alleen afspraken die deze agenda organiseert kunnen gewijzigd worden."
+    },
+    "invalid_recurrence_id": {
+      "message": "De afspraak heeft geen moment op {recurrence_id}."
+    },
+    "not_recurring": {
+      "message": "Afspraak {uid} herhaalt niet."
+    },
+    "rrule_on_occurrence": {
+      "message": "Een herhaalregel kan alleen voor de hele reeks gewijzigd worden."
     }
   },
   "services": {
@@ -150,6 +174,112 @@
         "duration": {
           "name": "Duur",
           "description": "Lengte van de periode als er geen einde is. Standaard: 7 dagen."
+        }
+      }
+    },
+    "create_event": {
+      "name": "Afspraak maken",
+      "description": "Voegt een afspraak toe die deze agenda organiseert en mailt de uitnodiging naar de deelnemers. Geeft de UID terug.",
+      "fields": {
+        "summary": {
+          "name": "Titel",
+          "description": "Titel van de afspraak."
+        },
+        "start_date_time": {
+          "name": "Begin",
+          "description": "Begindatum en tijd. Tijden zonder zone zijn lokaal."
+        },
+        "end_date_time": {
+          "name": "Einde",
+          "description": "Einddatum en tijd. Standaard: een uur na het begin."
+        },
+        "start_date": {
+          "name": "Begindatum",
+          "description": "Begin van een hele dag afspraak."
+        },
+        "end_date": {
+          "name": "Einddatum",
+          "description": "Dag na de laatste dag van een hele dag afspraak. Standaard: één dag."
+        },
+        "description": {
+          "name": "Omschrijving",
+          "description": "Vrije tekst, ongewijzigd bewaard (markeringen voor automatiseringen zijn hier veilig)."
+        },
+        "location": {
+          "name": "Locatie",
+          "description": "Waar de afspraak plaatsvindt."
+        },
+        "attendees": {
+          "name": "Deelnemers",
+          "description": "E-mailadressen die de uitnodiging krijgen."
+        },
+        "rrule": {
+          "name": "Herhaling",
+          "description": "RFC 5545 regel, bijvoorbeeld FREQ=WEEKLY;COUNT=4 of FREQ=DAILY;UNTIL=20261231. Leeg in update_event stopt de herhaling."
+        }
+      }
+    },
+    "update_event": {
+      "name": "Afspraak wijzigen",
+      "description": "Wijzigt een afspraak die deze agenda organiseert, of één moment ervan, en mailt de wijziging. Weggelaten velden blijven zoals ze zijn; verwijderde deelnemers krijgen een annulering.",
+      "fields": {
+        "uid": {
+          "name": "UID",
+          "description": "UID van een afspraak die deze agenda organiseert, zoals create_event of list_events die teruggeeft."
+        },
+        "recurrence_id": {
+          "name": "Herhaling moment",
+          "description": "recurrence_id uit list_events: wijzig of annuleer alleen dat moment van een reeks."
+        },
+        "summary": {
+          "name": "Titel",
+          "description": "Titel van de afspraak."
+        },
+        "start_date_time": {
+          "name": "Begin",
+          "description": "Begindatum en tijd. Tijden zonder zone zijn lokaal."
+        },
+        "end_date_time": {
+          "name": "Einde",
+          "description": "Einddatum en tijd. Standaard: een uur na het begin."
+        },
+        "start_date": {
+          "name": "Begindatum",
+          "description": "Begin van een hele dag afspraak."
+        },
+        "end_date": {
+          "name": "Einddatum",
+          "description": "Dag na de laatste dag van een hele dag afspraak. Standaard: één dag."
+        },
+        "description": {
+          "name": "Omschrijving",
+          "description": "Vrije tekst, ongewijzigd bewaard (markeringen voor automatiseringen zijn hier veilig)."
+        },
+        "location": {
+          "name": "Locatie",
+          "description": "Waar de afspraak plaatsvindt."
+        },
+        "attendees": {
+          "name": "Deelnemers",
+          "description": "E-mailadressen die de uitnodiging krijgen."
+        },
+        "rrule": {
+          "name": "Herhaling",
+          "description": "RFC 5545 regel, bijvoorbeeld FREQ=WEEKLY;COUNT=4 of FREQ=DAILY;UNTIL=20261231. Leeg in update_event stopt de herhaling."
+        }
+      }
+    },
+    "cancel_event": {
+      "name": "Afspraak annuleren",
+      "description": "Annuleert een afspraak die deze agenda organiseert, of één moment ervan, en mailt de annulering. Als de mail niet verstuurd kan worden verandert er niets.",
+      "fields": {
+        "uid": {
+          "name": "UID",
+          "description": "UID van een afspraak die deze agenda organiseert, zoals create_event of list_events die teruggeeft."
+        },
+        "recurrence_id": {
+          "name": "Herhaling moment",
+          "description": "recurrence_id uit list_events: wijzig of annuleer alleen dat moment van een reeks."
         }
       }
     }

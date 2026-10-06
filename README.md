@@ -12,9 +12,11 @@ things like a person, and Home Assistant knows about them.
 * Optionally accepts invitations (always, once they have a location, or
   only when an automation says so) and asks organizers for a missing
   location.
+* Lets automations create, move and cancel events, recurring series and
+  single occurrences included, with a proper invitation email.
 
-> **Status: pre release (0.4.0).** Inbound invitations, CalDAV and replies
-> work. Creating and changing events with outbound invites is next.
+> **Status: pre release (0.5.0).** Feature complete for 1.0; migration from
+> the pyscript version and release polish are next.
 
 ## Installation (HACS custom repository)
 
@@ -103,8 +105,41 @@ skipped with a notification. In an .ics file, events that ended more than
 | `invite_calendar.poll` | Check the mailbox now. |
 | `invite_calendar.list_events` | Occurrences in a window (default: the next 7 days) with what `calendar.get_events` leaves out: `uid`, `recurrence_id`, `organizer`, `attendees`, `status`, `sequence`, `managed` (arrived by mail), `accepted`. Returns a response. |
 | `invite_calendar.accept_event` | Accept the invitation with this `uid` now, under any policy. Does nothing when this version was already accepted. |
+| `invite_calendar.create_event` | Add an event organized by this calendar and email the invitation to `attendees`. Timed (`start_date_time`, `end_date_time`, default one hour) or all day (`start_date`, `end_date`), optional `rrule` such as `FREQ=WEEKLY;COUNT=4`. Returns `uid`, `invited`, `pending`. |
+| `invite_calendar.update_event` | Change an event this calendar organizes; only the fields given change. With `recurrence_id` (from `list_events`) only that occurrence changes. Moving only the start keeps the duration. Removed attendees get a cancellation. `rrule: ""` stops the repetition. |
+| `invite_calendar.cancel_event` | Cancel an event this calendar organizes, or with `recurrence_id` one occurrence of it. The cancellation is sent first; if it can't be sent, nothing changes. |
 
 All of them target the calendar entity.
+
+### Events the calendar organizes
+
+The calendar's own address is the organizer of what it creates, so the
+mail is sent as the mailbox itself and passes sender and DMARC checks. The
+people invited are attendees: they get an invitation card and can accept,
+but can't change the event in their own calendar app; Home Assistant is in
+charge. Mail coming back for these events (replies, forwards) never changes
+them. Only events the calendar organizes can be updated or cancelled; an
+invitation someone else sent stays theirs.
+
+Every invitation carries the whole series, with a higher sequence number on
+each change, and replies thread under the first invitation. If an invitation
+can't be sent, the event is still saved, the response says `pending: true`,
+and it is sent again on the next poll. Moving a series or stopping the
+repetition drops changes made to single occurrences, as Google and Outlook
+do.
+
+```yaml
+action: invite_calendar.create_event
+target:
+  entity_id: calendar.tesla
+data:
+  summary: Trip to Delft
+  start_date_time: "2026-10-20 08:00:00"
+  end_date_time: "2026-10-20 17:00:00"
+  location: Markt 87, Delft
+  attendees: [bart@example.com]
+response_variable: created
+```
 
 ```yaml
 action: invite_calendar.list_events

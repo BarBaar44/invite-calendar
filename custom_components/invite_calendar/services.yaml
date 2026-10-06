@@ -33,3 +33,107 @@ list_events:
     duration:
       selector:
         duration:
+
+create_event:
+  target:
+    entity:
+      integration: invite_calendar
+      domain: calendar
+  fields:
+    summary:
+      required: true
+      example: "Trip to Delft"
+      selector:
+        text:
+    start_date_time:
+      example: "2026-10-20 09:00:00"
+      selector:
+        datetime:
+    end_date_time:
+      example: "2026-10-20 10:00:00"
+      selector:
+        datetime:
+    start_date:
+      example: "2026-10-20"
+      selector:
+        date:
+    end_date:
+      example: "2026-10-21"
+      selector:
+        date:
+    description:
+      selector:
+        text:
+          multiline: true
+    location:
+      example: "Markt 87, Delft"
+      selector:
+        text:
+    attendees:
+      example: "[bart@example.com]"
+      selector:
+        text:
+          multiple: true
+    rrule:
+      example: "FREQ=WEEKLY;COUNT=4"
+      selector:
+        text:
+
+update_event:
+  target:
+    entity:
+      integration: invite_calendar
+      domain: calendar
+  fields:
+    uid:
+      required: true
+      selector:
+        text:
+    recurrence_id:
+      example: "20261020T090000"
+      selector:
+        text:
+    summary:
+      selector:
+        text:
+    start_date_time:
+      selector:
+        datetime:
+    end_date_time:
+      selector:
+        datetime:
+    start_date:
+      selector:
+        date:
+    end_date:
+      selector:
+        date:
+    description:
+      selector:
+        text:
+          multiline: true
+    location:
+      selector:
+        text:
+    attendees:
+      selector:
+        text:
+          multiple: true
+    rrule:
+      selector:
+        text:
+
+cancel_event:
+  target:
+    entity:
+      integration: invite_calendar
+      domain: calendar
+  fields:
+    uid:
+      required: true
+      selector:
+        text:
+    recurrence_id:
+      example: "20261020T090000"
+      selector:
+        text:
