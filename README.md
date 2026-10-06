@@ -15,8 +15,9 @@ things like a person, and Home Assistant knows about them.
 * Lets automations create, move and cancel events, recurring series and
   single occurrences included, with a proper invitation email.
 
-> **Status: pre release (0.5.0).** Feature complete for 1.0; migration from
-> the pyscript version and release polish are next.
+Works with a local .ics file or any CalDAV server (tested with Nextcloud
+35 and Radicale), and with any IMAP/SMTP mail server that allows custom
+IMAP keywords (Dovecot, mailcow and most others).
 
 ## Installation (HACS custom repository)
 
@@ -28,6 +29,18 @@ things like a person, and Home Assistant knows about them.
 
 Entries made with 0.1.0 can't be upgraded: delete them and add the
 integration again.
+
+## Troubleshooting
+
+* Turn on debug logging for `custom_components.invite_calendar`, poll, and
+  read the log; every invitation it applies, accepts or skips is logged.
+* Settings, Devices & services, Invite Calendar, the entry, three dots,
+  **Download diagnostics** gives settings and counts without passwords,
+  addresses or event content, safe to attach to an issue.
+* An invitation that can't be read is retried twice and then skipped with a
+  notification.
+* `list_events` only looks 7 days ahead unless you pass `duration` or
+  `end`.
 
 ## Setup
 

@@ -23,5 +23,3 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # Remove "brands" once the icon ships at M5.
-          ignore: brands
