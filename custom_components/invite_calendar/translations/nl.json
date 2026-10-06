@@ -49,7 +49,7 @@
           "caldav_password": "Wachtwoord"
         },
         "data_description": {
-          "caldav_url": "De URL van de collectie. Nextcloud: https://<host>/remote.php/dav/calendars/<gebruiker>/<agenda>/ (Agenda app, menu van de agenda, Privé link kopiëren).",
+          "caldav_url": "De URL van de collectie. Nextcloud: https://HOST/remote.php/dav/calendars/GEBRUIKER/AGENDA/ (Agenda app, menu van de agenda, Privé link kopiëren).",
           "caldav_password": "Gebruik een app wachtwoord (Nextcloud: Persoonlijke instellingen, Beveiliging, Apparaten & sessies)."
         }
       },

@@ -49,7 +49,7 @@
           "caldav_password": "Password"
         },
         "data_description": {
-          "caldav_url": "The collection URL. Nextcloud: https://<host>/remote.php/dav/calendars/<user>/<calendar>/ (Calendar app, calendar menu, Copy private link).",
+          "caldav_url": "The collection URL. Nextcloud: https://HOST/remote.php/dav/calendars/USER/CALENDAR/ (Calendar app, calendar menu, Copy private link).",
           "caldav_password": "Use an app password (Nextcloud: Personal settings, Security, Devices & sessions)."
         }
       },
