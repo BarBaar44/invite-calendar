@@ -1,0 +1,5 @@
+poll:
+  target:
+    entity:
+      integration: invite_calendar
+      domain: calendar

@@ -1,18 +1,24 @@
 {
   "domain": "invite_calendar",
   "name": "Invite Calendar",
-  "codeowners": ["@BarBaar44"],
+  "codeowners": [
+    "@BarBaar44"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/BarBaar44/invite-calendar",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/BarBaar44/invite-calendar/issues",
-  "loggers": ["caldav"],
+  "loggers": [
+    "caldav",
+    "recurring_ical_events"
+  ],
   "requirements": [
     "caldav>=2.1.0",
     "icalendar>=6.3.1,<7",
+    "python-dateutil>=2.8",
     "recurring-ical-events>=3.3.0,<4"
   ],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

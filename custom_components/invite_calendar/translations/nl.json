@@ -2,15 +2,78 @@
   "config": {
     "step": {
       "user": {
-        "title": "Invite Calendar",
-        "description": "Naam van de agenda.",
+        "title": "Mailbox",
+        "description": "De IMAP mailbox die de agenda uitnodigingen ontvangt. Gebruik een app wachtwoord als je mailprovider dat aanbiedt.",
         "data": {
-          "calendar_name": "Naam van de agenda"
+          "host": "IMAP server",
+          "port": "Poort",
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord",
+          "folder": "Map",
+          "processed_keyword": "Verwerkt sleutelwoord"
+        },
+        "data_description": {
+          "host": "Directe TLS (IMAPS), bijvoorbeeld mail.example.com.",
+          "port": "993 voor IMAPS.",
+          "username": "Meestal het volledige e-mailadres. Dit is ook het eigen adres van de agenda.",
+          "folder": "Map die de uitnodigingen ontvangt.",
+          "processed_keyword": "Eigen IMAP sleutelwoord dat een verwerkt bericht markeert. Later wijzigen laat elk bericht in de map weer nieuw lijken."
+        }
+      },
+      "ics": {
+        "title": "Agenda",
+        "description": "Naam van de agenda en het .ics bestand waarin hij wordt opgeslagen.",
+        "data": {
+          "name": "Naam",
+          "ics_path": "Agendabestand"
+        },
+        "data_description": {
+          "ics_path": "Absoluut pad binnen de configuratiemap. Een bestaand bestand wordt behouden en gebruikt."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Inloggen op mailbox mislukt",
+        "description": "De IMAP server weigerde de login voor {username} op {host}. Vul het huidige wachtwoord in.",
+        "data": {
+          "password": "Wachtwoord"
         }
       }
     },
     "error": {
-      "name_required": "Vul een naam in."
+      "cannot_connect": "Kan geen verbinding maken met de IMAP server.",
+      "invalid_auth": "Login geweigerd. Controleer gebruikersnaam en wachtwoord.",
+      "folder_not_found": "De map bestaat niet of kan niet worden geselecteerd.",
+      "keywords_not_supported": "Deze map staat geen eigen IMAP sleutelwoorden toe, en die zijn nodig om verwerkte mail te markeren.",
+      "invalid_keyword": "Gebruik alleen letters, cijfers en eenvoudige leestekens, geen spaties.",
+      "name_required": "Vul een naam in.",
+      "invalid_path": "Vul een absoluut pad in naar een bestand dat eindigt op .ics.",
+      "path_outside_config": "Het bestand moet in de configuratiemap staan.",
+      "path_not_writable": "Home Assistant kan niet naar die locatie schrijven.",
+      "path_in_use": "Een andere Invite Calendar gebruikt dit bestand al."
+    },
+    "abort": {
+      "already_configured": "Deze mailboxmap is al ingesteld.",
+      "reauth_successful": "Login bijgewerkt."
+    }
+  },
+  "exceptions": {
+    "imap_auth_failed": {
+      "message": "IMAP login geweigerd: {error}"
+    },
+    "store_read_failed": {
+      "message": "Kan de agenda {store} niet lezen: {error}"
+    },
+    "store_write_failed": {
+      "message": "Kan de agenda {store} niet schrijven: {error}"
+    },
+    "poll_failed": {
+      "message": "Mailbox controleren mislukt: {error}"
+    }
+  },
+  "services": {
+    "poll": {
+      "name": "Mailbox controleren",
+      "description": "Controleert de mailbox nu op nieuwe uitnodigingen in plaats van te wachten op de volgende geplande controle."
     }
   }
 }

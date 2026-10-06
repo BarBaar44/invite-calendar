@@ -2,15 +2,78 @@
   "config": {
     "step": {
       "user": {
-        "title": "Invite Calendar",
-        "description": "Name of the calendar.",
+        "title": "Mailbox",
+        "description": "The IMAP mailbox that receives the calendar invitations. Use an app password where your mail provider offers one.",
         "data": {
-          "calendar_name": "Calendar name"
+          "host": "IMAP server",
+          "port": "Port",
+          "username": "Username",
+          "password": "Password",
+          "folder": "Folder",
+          "processed_keyword": "Processed keyword"
+        },
+        "data_description": {
+          "host": "Implicit TLS (IMAPS), for example mail.example.com.",
+          "port": "993 for IMAPS.",
+          "username": "Usually the full email address. It is also the calendar's own address.",
+          "folder": "Folder that receives the invitations.",
+          "processed_keyword": "Private IMAP keyword that marks a processed message. Changing it later makes every message in the folder look new."
+        }
+      },
+      "ics": {
+        "title": "Calendar",
+        "description": "Name of the calendar and the .ics file it is stored in.",
+        "data": {
+          "name": "Name",
+          "ics_path": "Calendar file"
+        },
+        "data_description": {
+          "ics_path": "Absolute path inside the configuration folder. An existing file is kept and used."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Mailbox login failed",
+        "description": "The IMAP server rejected the login for {username} on {host}. Enter the current password.",
+        "data": {
+          "password": "Password"
         }
       }
     },
     "error": {
-      "name_required": "Enter a name."
+      "cannot_connect": "Could not connect to the IMAP server.",
+      "invalid_auth": "Login rejected. Check username and password.",
+      "folder_not_found": "The folder does not exist or can't be selected.",
+      "keywords_not_supported": "This folder does not allow custom IMAP keywords, which are needed to mark processed mail.",
+      "invalid_keyword": "Use letters, digits and simple punctuation only, no spaces.",
+      "name_required": "Enter a name.",
+      "invalid_path": "Enter an absolute path to a file ending in .ics.",
+      "path_outside_config": "The file must be inside the configuration folder.",
+      "path_not_writable": "Home Assistant can't write to that location.",
+      "path_in_use": "Another Invite Calendar entry already uses this file."
+    },
+    "abort": {
+      "already_configured": "This mailbox folder is already set up.",
+      "reauth_successful": "Login updated."
+    }
+  },
+  "exceptions": {
+    "imap_auth_failed": {
+      "message": "IMAP login rejected: {error}"
+    },
+    "store_read_failed": {
+      "message": "Could not read the calendar {store}: {error}"
+    },
+    "store_write_failed": {
+      "message": "Could not write the calendar {store}: {error}"
+    },
+    "poll_failed": {
+      "message": "Polling the mailbox failed: {error}"
+    }
+  },
+  "services": {
+    "poll": {
+      "name": "Poll mailbox",
+      "description": "Checks the mailbox for new invitations now instead of waiting for the next scheduled poll."
     }
   }
 }
