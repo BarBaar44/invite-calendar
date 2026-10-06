@@ -1,0 +1,16 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Invite Calendar",
+        "description": "Name of the calendar.",
+        "data": {
+          "calendar_name": "Calendar name"
+        }
+      }
+    },
+    "error": {
+      "name_required": "Enter a name."
+    }
+  }
+}
