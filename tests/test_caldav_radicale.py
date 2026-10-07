@@ -26,6 +26,8 @@ from custom_components.invite_calendar.store.caldav import (
     CalDavNotCalendarError,
     CalDavSettings,
     CalDavStore,
+    CalendarInfo,
+    async_discover,
 )
 
 from .helpers import TZ, vev
@@ -201,3 +203,41 @@ async def test_errors(
         await make_store(hass, calendar_url, session, password="wrong").async_load()
     with pytest.raises(CalDavNotCalendarError):
         await make_store(hass, radicale + "missing/", session).async_load()
+
+
+async def test_discovery(
+    hass: HomeAssistant,
+    radicale: str,
+    calendar_url: str,
+    session: aiohttp.ClientSession,
+) -> None:
+    """Server address in, the user's event calendars out: through
+    .well-known (Radicale redirects it to /), the principal and the home."""
+    auth = {"Authorization": aiohttp.encode_basic_auth(USER, PASSWORD)}
+    # A task list: not offered (no VEVENT).
+    async with session.request(
+        "MKCALENDAR",
+        radicale + "tasks/",
+        headers={**auth, "Content-Type": "application/xml"},
+        data=(
+            b'<?xml version="1.0"?><c:mkcalendar xmlns:d="DAV:" '
+            b'xmlns:c="urn:ietf:params:xml:ns:caldav"><d:set><d:prop>'
+            b"<d:displayname>Tasks</d:displayname>"
+            b'<c:supported-calendar-component-set><c:comp name="VTODO"/>'
+            b"</c:supported-calendar-component-set></d:prop></d:set>"
+            b"</c:mkcalendar>"
+        ),
+    ) as resp:
+        assert resp.status == 201, await resp.text()
+
+    host = radicale.split(f"/{USER}/")[0]
+    found = await async_discover(hass, host, USER, PASSWORD, session=session)
+    # Radicale names a calendar without a displayname after its path.
+    assert found == [CalendarInfo(calendar_url, "bart/test")]
+
+    # A calendar's own URL: just that one.
+    found = await async_discover(hass, calendar_url, USER, PASSWORD, session=session)
+    assert [c.url for c in found] == [calendar_url]
+
+    with pytest.raises(StoreAuthError):
+        await async_discover(hass, host, USER, "wrong", session=session)

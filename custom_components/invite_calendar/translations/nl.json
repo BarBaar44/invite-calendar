@@ -41,16 +41,23 @@
       },
       "caldav": {
         "title": "CalDAV agenda",
-        "description": "Naam van de agenda en de CalDAV collectie waarin hij wordt bewaard. De agenda mag gedeeld zijn met mensen: afspraken die zij daar maken worden getoond maar nooit gewijzigd of verwijderd.",
+        "description": "Naam van de agenda, en de CalDAV server en login. De agenda's op de server worden daarna getoond. De agenda kan met mensen gedeeld worden: afspraken die zij daar maken worden getoond maar nooit gewijzigd of verwijderd.",
         "data": {
           "name": "Naam",
-          "caldav_url": "Agenda URL",
+          "caldav_server": "Server",
           "caldav_username": "Gebruikersnaam",
           "caldav_password": "Wachtwoord"
         },
         "data_description": {
-          "caldav_url": "De URL van de collectie. Nextcloud: https://HOST/remote.php/dav/calendars/GEBRUIKER/AGENDA/ (Agenda app, menu van de agenda, Privé link kopiëren).",
-          "caldav_password": "Gebruik een app wachtwoord (Nextcloud: Persoonlijke instellingen, Beveiliging, Apparaten & sessies)."
+          "caldav_server": "Het serveradres, bijvoorbeeld cloud.example.com. De eigen URL van een agenda werkt ook.",
+          "caldav_password": "Gebruik een app-wachtwoord (Nextcloud: Persoonlijke instellingen, Beveiliging, Apparaten & sessies)."
+        }
+      },
+      "caldav_calendar": {
+        "title": "Kies de agenda",
+        "description": "{count} agenda('s) gevonden voor afspraken waarin deze login mag schrijven.",
+        "data": {
+          "caldav_calendar": "Agenda"
         }
       },
       "reauth_confirm": {
@@ -117,7 +124,8 @@
       "caldav_invalid_auth": "De CalDAV server weigerde de login.",
       "caldav_not_calendar": "Die URL is geen agenda collectie. Controleer het pad.",
       "caldav_cannot_connect": "Kan geen verbinding maken met de CalDAV server.",
-      "mailbox_in_use": "Deze mailboxmap wordt al door een andere agenda gebruikt."
+      "mailbox_in_use": "Deze mailboxmap wordt al door een andere agenda gebruikt.",
+      "caldav_no_calendars": "Geen CalDAV agenda gevonden die afspraken bevat en waarin deze login mag schrijven. Controleer het serveradres, of vul de eigen URL van de agenda in."
     },
     "abort": {
       "already_configured": "Deze mailboxmap is al ingesteld.",

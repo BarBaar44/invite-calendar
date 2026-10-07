@@ -41,16 +41,23 @@
       },
       "caldav": {
         "title": "CalDAV calendar",
-        "description": "Name of the calendar and the CalDAV collection it is stored in. The calendar can be shared with people: events they create there are shown but never changed or removed.",
+        "description": "Name of the calendar, and the CalDAV server and login. The calendars on the server are listed next. The calendar can be shared with people: events they create there are shown but never changed or removed.",
         "data": {
           "name": "Name",
-          "caldav_url": "Calendar URL",
+          "caldav_server": "Server",
           "caldav_username": "Username",
           "caldav_password": "Password"
         },
         "data_description": {
-          "caldav_url": "The collection URL. Nextcloud: https://HOST/remote.php/dav/calendars/USER/CALENDAR/ (Calendar app, calendar menu, Copy private link).",
+          "caldav_server": "The server address, for example cloud.example.com. A calendar's own URL works too.",
           "caldav_password": "Use an app password (Nextcloud: Personal settings, Security, Devices & sessions)."
+        }
+      },
+      "caldav_calendar": {
+        "title": "Choose the calendar",
+        "description": "Found {count} calendar(s) for events that this login can write to.",
+        "data": {
+          "caldav_calendar": "Calendar"
         }
       },
       "reauth_confirm": {
@@ -117,7 +124,8 @@
       "caldav_invalid_auth": "The CalDAV server rejected the login.",
       "caldav_not_calendar": "That URL is not a calendar collection. Check the path.",
       "caldav_cannot_connect": "Could not connect to the CalDAV server.",
-      "mailbox_in_use": "This mailbox folder is already used by another calendar."
+      "mailbox_in_use": "This mailbox folder is already used by another calendar.",
+      "caldav_no_calendars": "No CalDAV calendar found that holds events and that this login can write to. Check the server address, or enter the calendar's own URL."
     },
     "abort": {
       "already_configured": "This mailbox folder is already set up.",

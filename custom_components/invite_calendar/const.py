@@ -15,6 +15,9 @@ CONF_PROCESSED_KEYWORD: Final = "processed_keyword"
 CONF_STORE_TYPE: Final = "store_type"
 CONF_ICS_PATH: Final = "ics_path"
 CONF_CALDAV_URL: Final = "caldav_url"
+# Config flow only: the server to discover calendars on, and the pick.
+CONF_CALDAV_SERVER: Final = "caldav_server"
+CONF_CALDAV_CALENDAR: Final = "caldav_calendar"
 CONF_CALDAV_USERNAME: Final = "caldav_username"
 CONF_CALDAV_PASSWORD: Final = "caldav_password"
 # Only used by 0.1.0 entries, see async_migrate_entry.

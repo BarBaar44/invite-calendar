@@ -1,8 +1,10 @@
 """Config flow for Invite Calendar.
 
 Steps: mailbox (validated by logging in), a store menu, then either the
-.ics file or the CalDAV collection, each with the calendar name. A reauth
-step asks for new passwords when the IMAP or CalDAV login starts failing.
+.ics file, or for CalDAV the server and login followed by a pick from the
+calendars found on it (RFC 6764 discovery), each with the calendar name. A
+reauth step asks for new passwords when the IMAP or CalDAV login starts
+failing.
 
 Reconfigure (one form) changes the connection settings of an existing
 entry: IMAP server, port, password and folder, and the .ics path or the
@@ -43,7 +45,9 @@ from .const import (
     ACCEPT_POLICIES,
     CONF_ACCEPT_POLICY,
     CONF_ATTENDEE_CN,
+    CONF_CALDAV_CALENDAR,
     CONF_CALDAV_PASSWORD,
+    CONF_CALDAV_SERVER,
     CONF_CALDAV_URL,
     CONF_CALDAV_USERNAME,
     CONF_FOLDER,
@@ -74,8 +78,11 @@ from .mail import imap, smtp
 from .options import resolve
 from .store import StoreAuthError, StoreError
 from .store.caldav import (
+    CalDavDiscoveryError,
     CalDavNotCalendarError,
     CalDavSettings,
+    CalendarInfo,
+    async_discover,
     async_validate,
     normalize_url,
 )
@@ -175,6 +182,9 @@ class InviteCalendarConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Start empty."""
         self._mailbox: dict[str, Any] = {}
+        self._name = ""
+        self._caldav_login: tuple[str, str] = ("", "")
+        self._calendars: list[CalendarInfo] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -279,38 +289,38 @@ class InviteCalendarConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_caldav(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Calendar name and CalDAV collection, validated by listing events."""
+        """Calendar name, CalDAV server and login; the calendars on it are
+        found next (async_step_caldav_calendar)."""
         errors: dict[str, str] = {}
         if user_input is not None:
             name = user_input[CONF_NAME].strip()
-            url = normalize_url(user_input[CONF_CALDAV_URL])
-            settings = CalDavSettings(
-                url=url,
-                username=user_input[CONF_CALDAV_USERNAME].strip(),
-                password=user_input[CONF_CALDAV_PASSWORD],
-            )
+            server = user_input[CONF_CALDAV_SERVER].strip()
+            username = user_input[CONF_CALDAV_USERNAME].strip()
+            password = user_input[CONF_CALDAV_PASSWORD]
             if not name:
                 errors[CONF_NAME] = "name_required"
-            elif not url.lower().startswith(("https://", "http://")):
-                errors[CONF_CALDAV_URL] = "invalid_url"
-            elif any(
-                normalize_url(e.data.get(CONF_CALDAV_URL) or "") == url
-                for e in self._async_current_entries(include_ignore=False)
+            elif not server or server.lower().startswith(
+                ("ftp://", "webcal://", "file:")
             ):
-                errors[CONF_CALDAV_URL] = "url_in_use"
-            elif key := await self._caldav_error(settings):
-                errors["base"] = key
+                errors[CONF_CALDAV_SERVER] = "invalid_url"
             else:
-                return self.async_create_entry(
-                    title=name,
-                    data={
-                        **self._mailbox,
-                        CONF_STORE_TYPE: STORE_CALDAV,
-                        CONF_CALDAV_URL: settings.url,
-                        CONF_CALDAV_USERNAME: settings.username,
-                        CONF_CALDAV_PASSWORD: settings.password,
-                    },
-                )
+                try:
+                    calendars = await async_discover(
+                        self.hass, server, username, password
+                    )
+                except StoreAuthError:
+                    errors["base"] = "caldav_invalid_auth"
+                except CalDavDiscoveryError as err:
+                    LOGGER.debug("CalDAV discovery: %s", err)
+                    errors["base"] = "caldav_no_calendars"
+                except StoreError as err:
+                    LOGGER.debug("CalDAV discovery: %s", err)
+                    errors["base"] = "caldav_cannot_connect"
+                else:
+                    self._name = name
+                    self._caldav_login = (username, password)
+                    self._calendars = calendars
+                    return await self.async_step_caldav_calendar()
 
         defaults = user_input or {}
         return self.async_show_form(
@@ -321,7 +331,7 @@ class InviteCalendarConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_NAME, default=defaults.get(CONF_NAME, self._default_name())
                     ): str,
                     vol.Required(
-                        CONF_CALDAV_URL, default=defaults.get(CONF_CALDAV_URL, "")
+                        CONF_CALDAV_SERVER, default=defaults.get(CONF_CALDAV_SERVER, "")
                     ): str,
                     vol.Required(
                         CONF_CALDAV_USERNAME,
@@ -330,6 +340,66 @@ class InviteCalendarConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_CALDAV_PASSWORD): PASSWORD_SELECTOR,
                 }
             ),
+            errors=errors,
+        )
+
+    async def async_step_caldav_calendar(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick one of the calendars found; checked by listing its events."""
+        errors: dict[str, str] = {}
+        in_use = {
+            normalize_url(e.data.get(CONF_CALDAV_URL) or "")
+            for e in self._async_current_entries(include_ignore=False)
+        }
+        if user_input is not None:
+            url = normalize_url(user_input[CONF_CALDAV_CALENDAR])
+            username, password = self._caldav_login
+            settings = CalDavSettings(url=url, username=username, password=password)
+            if url not in {c.url for c in self._calendars}:
+                errors[CONF_CALDAV_CALENDAR] = "invalid_url"
+            elif url in in_use:
+                errors[CONF_CALDAV_CALENDAR] = "url_in_use"
+            elif key := await self._caldav_error(settings):
+                errors["base"] = key
+            else:
+                return self.async_create_entry(
+                    title=self._name,
+                    data={
+                        **self._mailbox,
+                        CONF_STORE_TYPE: STORE_CALDAV,
+                        CONF_CALDAV_URL: settings.url,
+                        CONF_CALDAV_USERNAME: settings.username,
+                        CONF_CALDAV_PASSWORD: settings.password,
+                    },
+                )
+
+        options = [
+            selector.SelectOptionDict(
+                value=c.url,
+                label=f"{c.name} (already used)" if c.url in in_use else c.name,
+            )
+            for c in self._calendars
+        ]
+        free = [c.url for c in self._calendars if c.url not in in_use]
+        default = (user_input or {}).get(CONF_CALDAV_CALENDAR) or (
+            free[0] if free else self._calendars[0].url
+        )
+        return self.async_show_form(
+            step_id="caldav_calendar",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CALDAV_CALENDAR, default=default
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options,
+                            mode=selector.SelectSelectorMode.LIST,
+                        )
+                    )
+                }
+            ),
+            description_placeholders={"count": str(len(self._calendars))},
             errors=errors,
         )
 
