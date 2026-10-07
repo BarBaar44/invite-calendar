@@ -550,3 +550,23 @@ async def test_reconfigure_caldav(
     assert setup_caldav_entry.data[CONF_PASSWORD] == "pw"
     await hass.async_block_till_done()
     assert await hass.config_entries.async_unload(setup_caldav_entry.entry_id)
+
+
+async def test_second_flow_for_same_mailbox_aborts_with_text(
+    hass: HomeAssistant, mailbox: FakeMailbox
+) -> None:
+    """A setup dialog left open blocks a second one for the same mailbox
+    folder; the abort reason must have a text (it showed as a raw key)."""
+    first = await start(hass)
+    await hass.config_entries.flow.async_configure(first["flow_id"], MAILBOX)
+    second = await start(hass)
+    second = await hass.config_entries.flow.async_configure(second["flow_id"], MAILBOX)
+    assert second["type"] is FlowResultType.ABORT
+    assert second["reason"] == "already_in_progress"
+
+    import json
+
+    folder = Path(__file__).parent.parent / "custom_components" / DOMAIN
+    for name in ("strings.json", "translations/en.json", "translations/nl.json"):
+        aborts = json.loads((folder / name).read_text())["config"]["abort"]
+        assert aborts.get("already_in_progress"), name

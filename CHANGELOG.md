@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 (2026-10-07)
+
+* Starting a second setup for a mailbox folder whose setup is still open
+  showed the raw reason `already_in_progress`; it now says what to do.
+
 ## 1.2.0 (2026-10-07)
 
 * New action `decline_event`: decline an invitation, or with
