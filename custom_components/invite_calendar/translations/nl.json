@@ -64,6 +64,41 @@
           "password": "Leeg houdt het huidige wachtwoord.",
           "caldav_password": "Leeg houdt het huidige wachtwoord."
         }
+      },
+      "reconfigure": {
+        "title": "Verbinding wijzigen",
+        "description": "Server, wachtwoord, map en agendabestand van deze agenda. De gebruikersnaam ({username}) en het verwerkt-label ({keyword}) zijn hier niet te wijzigen: voeg voor een andere mailbox een nieuwe agenda toe.",
+        "data": {
+          "host": "IMAP server",
+          "port": "Poort",
+          "password": "Wachtwoord",
+          "folder": "Map",
+          "ics_path": "Agendabestand"
+        },
+        "data_description": {
+          "password": "Leeg houdt het huidige wachtwoord.",
+          "folder": "Mail in een andere map wordt als nieuw gelezen (binnen de terugkijkperiode).",
+          "ics_path": "Absoluut pad binnen de configuratiemap. Afspraken worden niet verplaatst: kopieer eerst het oude bestand daarheen om ze te houden."
+        }
+      },
+      "reconfigure_caldav": {
+        "title": "Verbinding wijzigen",
+        "description": "Server, wachtwoorden, map en CalDAV agenda van deze agenda. De gebruikersnaam ({username}) en het verwerkt-label ({keyword}) zijn hier niet te wijzigen: voeg voor een andere mailbox een nieuwe agenda toe.",
+        "data": {
+          "host": "IMAP server",
+          "port": "Poort",
+          "password": "Wachtwoord mailbox",
+          "folder": "Map",
+          "caldav_url": "Agenda URL",
+          "caldav_username": "CalDAV gebruikersnaam",
+          "caldav_password": "CalDAV wachtwoord"
+        },
+        "data_description": {
+          "password": "Leeg houdt het huidige wachtwoord.",
+          "folder": "Mail in een andere map wordt als nieuw gelezen (binnen de terugkijkperiode).",
+          "caldav_url": "Afspraken worden niet naar een andere agenda verplaatst.",
+          "caldav_password": "Leeg houdt het huidige wachtwoord. Gebruik een app-wachtwoord."
+        }
       }
     },
     "error": {
@@ -81,11 +116,13 @@
       "url_in_use": "Een andere Invite Calendar gebruikt deze agenda al.",
       "caldav_invalid_auth": "De CalDAV server weigerde de login.",
       "caldav_not_calendar": "Die URL is geen agenda collectie. Controleer het pad.",
-      "caldav_cannot_connect": "Kan geen verbinding maken met de CalDAV server."
+      "caldav_cannot_connect": "Kan geen verbinding maken met de CalDAV server.",
+      "mailbox_in_use": "Deze mailboxmap wordt al door een andere agenda gebruikt."
     },
     "abort": {
       "already_configured": "Deze mailboxmap is al ingesteld.",
-      "reauth_successful": "Login bijgewerkt."
+      "reauth_successful": "Login bijgewerkt.",
+      "reconfigure_successful": "Instellingen bijgewerkt."
     }
   },
   "exceptions": {
@@ -142,6 +179,24 @@
     },
     "rrule_on_occurrence": {
       "message": "Een herhaalregel kan alleen voor de hele reeks gewijzigd worden."
+    }
+  },
+  "issues": {
+    "imap_unreachable": {
+      "title": "{name}: mailbox onbereikbaar",
+      "description": "De mailbox op {host} kon al meer dan een uur niet gelezen worden, dus nieuwe uitnodigingen komen niet binnen. Laatste fout: {error}\n\nControleer de server en het netwerk, of wijzig de server via Opnieuw configureren van de integratie. Dit verdwijnt vanzelf zodra de mailbox weer gelezen kan worden."
+    },
+    "store_unreachable": {
+      "title": "{name}: agenda onbereikbaar",
+      "description": "De agenda {store} kon al meer dan een uur niet gelezen of geschreven worden. Uitnodigingen blijven in de mailbox en worden verwerkt zodra het weer werkt. Laatste fout: {error}\n\nControleer de server of het bestand, of wijzig het via Opnieuw configureren van de integratie."
+    },
+    "smtp_auth_failed": {
+      "title": "{name}: inloggen voor mail geweigerd",
+      "description": "De mailserver {host} weigerde de login van {username} voor uitgaande mail, dus antwoorden en uitnodigingen worden niet verstuurd. Laatste fout: {error}\n\nIs het wachtwoord van de mailbox gewijzigd, pas het dan aan via Opnieuw configureren; een apart SMTP wachtwoord staat in de opties. Dit verdwijnt nadat het volgende bericht verstuurd is."
+    },
+    "smtp_sender_refused": {
+      "title": "{name}: versturen als {address} geweigerd",
+      "description": "De mailserver {host} laat {username} niet versturen als {address}, dus antwoorden en uitnodigingen worden niet verstuurd. Laatste fout: {error}\n\nSta {username} toe te versturen als {address} op de mailserver (mailcow: de afzenderinstellingen van de mailbox), of gebruik in de opties de eigen login van de mailbox voor SMTP. Dit verdwijnt nadat het volgende bericht verstuurd is."
     }
   },
   "services": {

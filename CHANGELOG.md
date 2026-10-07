@@ -11,6 +11,12 @@
   can't be sent, nothing changes and the action fails.
 * The Manual accept policy now means: only `accept_event` and
   `decline_event` answer.
+* Reconfigure: change the IMAP server, port, password and folder, and the
+  .ics file or the CalDAV URL, username and password, without removing the
+  entry. The username and the processed keyword stay fixed.
+* Repairs issues instead of only log lines: mailbox or calendar unreachable
+  for over an hour, outgoing mail login rejected, sender address refused by
+  the mail server. Each clears by itself once it works again.
 
 ## 1.1.1 (2026-10-06)
 

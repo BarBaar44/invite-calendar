@@ -1,4 +1,4 @@
-"""Config flow: mailbox, store menu, .ics file or CalDAV, reauth."""
+"""Config flow: mailbox, store menu, .ics file or CalDAV, reauth, reconfigure."""
 
 from __future__ import annotations
 
@@ -328,6 +328,154 @@ async def test_reauth_caldav_keeps_empty_fields(
         result["flow_id"], {CONF_CALDAV_PASSWORD: "new-app-pw"}
     )
     assert result["reason"] == "reauth_successful"
+    assert setup_caldav_entry.data[CONF_CALDAV_PASSWORD] == "new-app-pw"
+    assert setup_caldav_entry.data[CONF_PASSWORD] == "pw"
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(setup_caldav_entry.entry_id)
+
+
+# ---- reconfigure -----------------------------------------------------------
+
+
+async def test_reconfigure_ics(
+    hass: HomeAssistant,
+    setup_entry: MockConfigEntry,
+    mailbox: FakeMailbox,
+    config_dir: Path,
+) -> None:
+    result = await setup_entry.start_reconfigure_flow(hass)
+    assert result["step_id"] == "reconfigure"
+    assert [str(k) for k in result["data_schema"].schema] == [
+        CONF_HOST,
+        CONF_PORT,
+        CONF_PASSWORD,
+        CONF_FOLDER,
+        CONF_ICS_PATH,
+    ]
+    new_path = str(config_dir / "cal" / "tesla.ics")
+    form = {
+        CONF_HOST: "imap.example.com",
+        CONF_PORT: 993,
+        CONF_FOLDER: "Calendar",
+        CONF_ICS_PATH: new_path,
+    }
+
+    mailbox.validate_error = imap.ImapAuthError("no")
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**form, CONF_PASSWORD: "wrong"}
+    )
+    assert result["errors"] == {"base": "invalid_auth"}
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**form, CONF_ICS_PATH: "relative.ics"}
+    )
+    assert result["errors"] == {CONF_ICS_PATH: "invalid_path"}
+
+    mailbox.validate_error = None
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**form, CONF_PASSWORD: "new"}
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    data = setup_entry.data
+    assert data[CONF_HOST] == "imap.example.com"
+    assert data[CONF_PASSWORD] == "new"
+    assert data[CONF_FOLDER] == "Calendar"
+    assert data[CONF_ICS_PATH] == new_path
+    # Identity is kept: username and keyword.
+    assert data[CONF_USERNAME] == "tesla@example.com"
+    assert data[CONF_PROCESSED_KEYWORD] == "InviteCalendarProcessed"
+    assert setup_entry.unique_id == "tesla@example.com@imap.example.com/calendar"
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(setup_entry.entry_id)
+
+
+async def test_reconfigure_empty_password_keeps_it(
+    hass: HomeAssistant, setup_entry: MockConfigEntry, mailbox: FakeMailbox
+) -> None:
+    result = await setup_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_HOST: "mail.example.com",
+            CONF_PORT: 143,
+            CONF_FOLDER: "INBOX",
+            CONF_ICS_PATH: setup_entry.data[CONF_ICS_PATH],
+        },
+    )
+    assert result["reason"] == "reconfigure_successful"
+    assert setup_entry.data[CONF_PASSWORD] == "pw"
+    assert setup_entry.data[CONF_PORT] == 143
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(setup_entry.entry_id)
+
+
+async def test_reconfigure_refuses_another_entrys_mailbox_and_file(
+    hass: HomeAssistant,
+    setup_entry: MockConfigEntry,
+    mailbox: FakeMailbox,
+    config_dir: Path,
+) -> None:
+    other_path = str(config_dir / "invite_calendar" / "other.ics")
+    MockConfigEntry(
+        domain=DOMAIN,
+        version=2,
+        unique_id="tesla@example.com@mail.example.com/other",
+        data={**MAILBOX, CONF_STORE_TYPE: STORE_ICS, CONF_ICS_PATH: other_path},
+    ).add_to_hass(hass)
+    result = await setup_entry.start_reconfigure_flow(hass)
+    form = {
+        CONF_HOST: "mail.example.com",
+        CONF_PORT: 993,
+        CONF_FOLDER: "Other",
+        CONF_ICS_PATH: setup_entry.data[CONF_ICS_PATH],
+    }
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], form)
+    assert result["errors"] == {"base": "mailbox_in_use"}
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**form, CONF_FOLDER: "INBOX", CONF_ICS_PATH: other_path}
+    )
+    assert result["errors"] == {CONF_ICS_PATH: "path_in_use"}
+    assert await hass.config_entries.async_unload(setup_entry.entry_id)
+
+
+async def test_reconfigure_caldav(
+    hass: HomeAssistant,
+    setup_caldav_entry: MockConfigEntry,
+    caldav_server: FakeCalDav,
+) -> None:
+    result = await setup_caldav_entry.start_reconfigure_flow(hass)
+    assert result["step_id"] == "reconfigure_caldav"
+    assert [str(k) for k in result["data_schema"].schema] == [
+        CONF_HOST,
+        CONF_PORT,
+        CONF_PASSWORD,
+        CONF_FOLDER,
+        CONF_CALDAV_URL,
+        CONF_CALDAV_USERNAME,
+        CONF_CALDAV_PASSWORD,
+    ]
+    form = {
+        CONF_HOST: "mail.example.com",
+        CONF_PORT: 993,
+        CONF_FOLDER: "INBOX",
+        CONF_CALDAV_URL: caldav_server.base,
+        CONF_CALDAV_USERNAME: "bart",
+    }
+    caldav_server.password = "new-app-pw"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], form)
+    assert result["errors"] == {"base": "caldav_invalid_auth"}
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**form, CONF_CALDAV_URL: "ftp://x"}
+    )
+    assert result["errors"] == {CONF_CALDAV_URL: "invalid_url"}
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**form, CONF_CALDAV_PASSWORD: "new-app-pw"}
+    )
+    assert result["reason"] == "reconfigure_successful"
     assert setup_caldav_entry.data[CONF_CALDAV_PASSWORD] == "new-app-pw"
     assert setup_caldav_entry.data[CONF_PASSWORD] == "pw"
     await hass.async_block_till_done()

@@ -64,6 +64,41 @@
           "password": "Empty keeps the current password.",
           "caldav_password": "Empty keeps the current password."
         }
+      },
+      "reconfigure": {
+        "title": "Change connection",
+        "description": "Server, password, folder and calendar file of this calendar. The username ({username}) and the processed keyword ({keyword}) can't be changed here: for another mailbox, add a new entry.",
+        "data": {
+          "host": "IMAP server",
+          "port": "Port",
+          "password": "Password",
+          "folder": "Folder",
+          "ics_path": "Calendar file"
+        },
+        "data_description": {
+          "password": "Empty keeps the current password.",
+          "folder": "Mail in another folder is read as new (within the lookback window).",
+          "ics_path": "Absolute path inside the configuration folder. Events are not moved: copy the old file there first to keep them."
+        }
+      },
+      "reconfigure_caldav": {
+        "title": "Change connection",
+        "description": "Server, passwords, folder and CalDAV calendar of this calendar. The username ({username}) and the processed keyword ({keyword}) can't be changed here: for another mailbox, add a new entry.",
+        "data": {
+          "host": "IMAP server",
+          "port": "Port",
+          "password": "Mailbox password",
+          "folder": "Folder",
+          "caldav_url": "Calendar URL",
+          "caldav_username": "CalDAV username",
+          "caldav_password": "CalDAV password"
+        },
+        "data_description": {
+          "password": "Empty keeps the current password.",
+          "folder": "Mail in another folder is read as new (within the lookback window).",
+          "caldav_url": "Events are not moved to another calendar.",
+          "caldav_password": "Empty keeps the current password. Use an app password."
+        }
       }
     },
     "error": {
@@ -81,11 +116,13 @@
       "url_in_use": "Another Invite Calendar entry already uses this calendar.",
       "caldav_invalid_auth": "The CalDAV server rejected the login.",
       "caldav_not_calendar": "That URL is not a calendar collection. Check the path.",
-      "caldav_cannot_connect": "Could not connect to the CalDAV server."
+      "caldav_cannot_connect": "Could not connect to the CalDAV server.",
+      "mailbox_in_use": "This mailbox folder is already used by another calendar."
     },
     "abort": {
       "already_configured": "This mailbox folder is already set up.",
-      "reauth_successful": "Login updated."
+      "reauth_successful": "Login updated.",
+      "reconfigure_successful": "Settings updated."
     }
   },
   "exceptions": {
@@ -142,6 +179,24 @@
     },
     "rrule_on_occurrence": {
       "message": "A repeat rule can only be changed on the whole series."
+    }
+  },
+  "issues": {
+    "imap_unreachable": {
+      "title": "{name}: mailbox unreachable",
+      "description": "The mailbox on {host} could not be read for over an hour, so new invitations are not picked up. Last error: {error}\n\nCheck the server and the network, or change the server in the integration's Reconfigure. This goes away by itself once the mailbox can be read again."
+    },
+    "store_unreachable": {
+      "title": "{name}: calendar unreachable",
+      "description": "The calendar {store} could not be read or written for over an hour. Invitations stay in the mailbox and are applied once it works again. Last error: {error}\n\nCheck the server or the file, or change it in the integration's Reconfigure."
+    },
+    "smtp_auth_failed": {
+      "title": "{name}: mail login rejected",
+      "description": "The mail server {host} rejected the login of {username} for outgoing mail, so replies and invitations are not sent. Last error: {error}\n\nIf the mailbox password changed, update it with Reconfigure; a separate SMTP password is set in the options. This goes away after the next message is sent."
+    },
+    "smtp_sender_refused": {
+      "title": "{name}: sending as {address} refused",
+      "description": "The mail server {host} won't let {username} send as {address}, so replies and invitations are not sent. Last error: {error}\n\nAllow {username} to send as {address} on the mail server (mailcow: the mailbox's sender settings), or use the mailbox's own login for SMTP in the options. This goes away after the next message is sent."
     }
   },
   "services": {

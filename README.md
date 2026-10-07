@@ -39,6 +39,11 @@ integration again.
   addresses or event content, safe to attach to an issue.
 * An invitation that can't be read is retried twice and then skipped with a
   notification.
+* Problems that need you show in **Settings, Repairs**: the mailbox or the
+  calendar unreachable for over an hour, the outgoing mail login rejected,
+  or the mail server refusing to send as the calendar's address. They
+  clear by themselves once things work again. A rejected IMAP or CalDAV
+  login asks for the new password directly (reauthentication).
 * `list_events` only looks 7 days ahead unless you pass `duration` or
   `end`.
 * CalDAV setup says the URL is not a calendar (HTTP 404) though the calendar
@@ -48,6 +53,12 @@ integration again.
   restarted (Nextcloud session cookies); update to 1.1.1 or later.
 
 ## Setup
+
+To change the server, a password, the folder or where the calendar is
+stored later: Settings, Devices & services, Invite Calendar, the entry,
+three dots, **Reconfigure**. The username and the processed keyword stay
+as they are (they identify the calendar); for another mailbox, add a new
+entry. Reconfigure does not move events to a new file or CalDAV calendar.
 
 1. **Mailbox**: IMAP server (implicit TLS, port 993), username, password
    (use an app password where your provider offers one), folder, and the

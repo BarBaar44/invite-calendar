@@ -62,6 +62,11 @@ class SmtpRefusedError(SmtpError):
     """Sender or recipient refused: retrying the same message won't help."""
 
 
+class SmtpSenderRefusedError(SmtpRefusedError):
+    """The server won't send as this From: address (a setup problem, not a
+    problem with one message)."""
+
+
 @dataclass(frozen=True, slots=True)
 class SmtpSettings:
     """Where and as whom to send."""
@@ -131,7 +136,7 @@ def send(cfg: SmtpSettings, msg: Message) -> None:
             server.send_message(msg)
             return
         except smtplib.SMTPSenderRefused as err:
-            raise SmtpRefusedError(
+            raise SmtpSenderRefusedError(
                 f"sender {msg.get('From')} refused by {cfg.host}; is "
                 f"{cfg.username} allowed to send as that address? {err}"
             ) from err

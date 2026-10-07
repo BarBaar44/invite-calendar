@@ -56,12 +56,13 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 from icalendar import Calendar, Event
 
-from . import freebusy
+from . import freebusy, issues
 from .const import (
     ACCEPT_IF_FREE,
     DOMAIN,
     EVENT_INVITE_RECEIVED,
     EVENT_UPDATED,
+    ISSUE_AFTER,
     MAX_MESSAGE_ATTEMPTS,
 )
 from .ical import events
@@ -204,7 +205,10 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
         self.lock = asyncio.Lock()
         self._state_store = StateStore(hass, entry.entry_id)
         self.state = EntryState()
-        self._imap_failing = False
+        # Since when the mailbox / the store keep failing (Repairs issue
+        # after ISSUE_AFTER); None while they work.
+        self._imap_failing_since: datetime.datetime | None = None
+        self._store_failing_since: datetime.datetime | None = None
 
     async def _async_setup(self) -> None:
         """Load persisted state once, before the first refresh."""
@@ -228,18 +232,59 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
                 translation_placeholders={"error": str(err)},
             ) from err
         except imap.ImapError as err:
-            if not self._imap_failing:
+            now = dt_util.utcnow()
+            if self._imap_failing_since is None:
                 _LOGGER.warning(
                     "[%s] IMAP fetch failed, retrying every poll: %s",
                     self.config_entry.title,
                     err,
                 )
-            self._imap_failing = True
+                self._imap_failing_since = now
+            elif now - self._imap_failing_since >= ISSUE_AFTER:
+                issues.raise_issue(
+                    self.hass,
+                    self.config_entry.entry_id,
+                    issues.IMAP_UNREACHABLE,
+                    {
+                        "name": self.config_entry.title,
+                        "host": self.imap_settings.host,
+                        "error": str(err),
+                    },
+                )
             return []
-        if self._imap_failing:
+        if self._imap_failing_since is not None:
             _LOGGER.info("[%s] IMAP reachable again", self.config_entry.title)
-        self._imap_failing = False
+            self._imap_failing_since = None
+        issues.clear_issue(
+            self.hass, self.config_entry.entry_id, issues.IMAP_UNREACHABLE
+        )
         return messages
+
+    def _note_store_failure(self, err: StoreError) -> None:
+        """A store that keeps failing becomes a Repairs issue. Rejected
+        credentials start reauth instead."""
+        if isinstance(err, StoreAuthError):
+            return
+        now = dt_util.utcnow()
+        if self._store_failing_since is None:
+            self._store_failing_since = now
+        elif now - self._store_failing_since >= ISSUE_AFTER:
+            issues.raise_issue(
+                self.hass,
+                self.config_entry.entry_id,
+                issues.STORE_UNREACHABLE,
+                {
+                    "name": self.config_entry.title,
+                    "store": self.store.describe(),
+                    "error": str(err),
+                },
+            )
+
+    def _note_store_ok(self) -> None:
+        self._store_failing_since = None
+        issues.clear_issue(
+            self.hass, self.config_entry.entry_id, issues.STORE_UNREACHABLE
+        )
 
     async def _async_poll(self) -> Calendar:
         name = self.config_entry.title
@@ -248,6 +293,7 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
         try:
             cal, snapshot = await self.store.async_load()
         except StoreError as err:
+            self._note_store_failure(err)
             raise self._store_failed(err, "store_read_failed") from err
 
         new_state = copy.deepcopy(self.state)
@@ -272,7 +318,9 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
         except StoreError as err:
             # Nothing flagged, nothing committed: the next poll applies the
             # same messages again, which is idempotent.
+            self._note_store_failure(err)
             raise self._store_failed(err, "store_write_failed") from err
+        self._note_store_ok()
 
         if outcome.to_flag:
             try:
@@ -312,14 +360,45 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
     # ---------------------------------------------------------------- replies
 
     async def _async_send(self, build, *args) -> str | None:
-        """Build and send one message in the executor; its Message-ID."""
+        """Build and send one message in the executor; its Message-ID.
+
+        A rejected SMTP login or a refused From: address is a setup problem,
+        not a problem with this message: it becomes a Repairs issue, cleared
+        by the next message that goes out."""
 
         def job() -> str | None:
             msg = build(self.options.smtp, *args)
             smtp.send(self.options.smtp, msg)
             return msg["Message-ID"]
 
-        return await self.hass.async_add_executor_job(job)
+        entry_id = self.config_entry.entry_id
+        placeholders = {
+            "name": self.config_entry.title,
+            "host": self.options.smtp.host,
+            "username": self.options.smtp.username,
+            "address": self.options.address,
+        }
+        try:
+            msg_id = await self.hass.async_add_executor_job(job)
+        except smtp.SmtpAuthError as err:
+            issues.raise_issue(
+                self.hass,
+                entry_id,
+                issues.SMTP_AUTH_FAILED,
+                {**placeholders, "error": str(err)},
+            )
+            raise
+        except smtp.SmtpSenderRefusedError as err:
+            issues.raise_issue(
+                self.hass,
+                entry_id,
+                issues.SMTP_SENDER_REFUSED,
+                {**placeholders, "error": str(err)},
+            )
+            raise
+        issues.clear_issue(self.hass, entry_id, issues.SMTP_AUTH_FAILED)
+        issues.clear_issue(self.hass, entry_id, issues.SMTP_SENDER_REFUSED)
+        return msg_id
 
     async def _async_missing_location_replies(
         self, changes: Diff, outcome: ProcessOutcome

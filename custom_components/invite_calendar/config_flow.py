@@ -3,6 +3,13 @@
 Steps: mailbox (validated by logging in), a store menu, then either the
 .ics file or the CalDAV collection, each with the calendar name. A reauth
 step asks for new passwords when the IMAP or CalDAV login starts failing.
+
+Reconfigure (one form) changes the connection settings of an existing
+entry: IMAP server, port, password and folder, and the .ics path or the
+CalDAV URL, username and password. Not the store type, the IMAP username
+(it is the calendar's own address, the ORGANIZER of its events) or the
+processed keyword (changing it replays the mailbox): for those, add a new
+entry. Everything is validated as in the setup steps before it is saved.
 """
 
 from __future__ import annotations
@@ -392,6 +399,111 @@ class InviteCalendarConfigFlow(ConfigFlow, domain=DOMAIN):
             },
             errors=errors,
         )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change server, password, folder and store location."""
+        entry = self._get_reconfigure_entry()
+        is_caldav = entry.data.get(CONF_STORE_TYPE) == STORE_CALDAV
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data = dict(entry.data)
+            data[CONF_HOST] = user_input[CONF_HOST].strip()
+            data[CONF_PORT] = int(user_input[CONF_PORT])
+            data[CONF_FOLDER] = user_input[CONF_FOLDER].strip()
+            if user_input.get(CONF_PASSWORD):
+                data[CONF_PASSWORD] = user_input[CONF_PASSWORD]
+            if is_caldav:
+                data[CONF_CALDAV_URL] = normalize_url(user_input[CONF_CALDAV_URL])
+                data[CONF_CALDAV_USERNAME] = user_input[CONF_CALDAV_USERNAME].strip()
+                if user_input.get(CONF_CALDAV_PASSWORD):
+                    data[CONF_CALDAV_PASSWORD] = user_input[CONF_CALDAV_PASSWORD]
+            else:
+                data[CONF_ICS_PATH] = user_input[CONF_ICS_PATH].strip()
+
+            settings = _settings(data)
+            unique_id = f"{settings.username}@{settings.host}/{settings.folder}".lower()
+            others = [
+                e
+                for e in self._async_current_entries(include_ignore=False)
+                if e.entry_id != entry.entry_id
+            ]
+            if any(e.unique_id == unique_id for e in others):
+                errors["base"] = "mailbox_in_use"
+            elif is_caldav:
+                url = data[CONF_CALDAV_URL]
+                if not url.lower().startswith(("https://", "http://")):
+                    errors[CONF_CALDAV_URL] = "invalid_url"
+                elif any(
+                    normalize_url(e.data.get(CONF_CALDAV_URL) or "") == url
+                    for e in others
+                ):
+                    errors[CONF_CALDAV_URL] = "url_in_use"
+            elif any(e.data.get(CONF_ICS_PATH) == data[CONF_ICS_PATH] for e in others):
+                errors[CONF_ICS_PATH] = "path_in_use"
+            elif err := await self.hass.async_add_executor_job(
+                check_ics_path, self.hass.config.config_dir, data[CONF_ICS_PATH]
+            ):
+                errors[CONF_ICS_PATH] = err
+
+            if not errors:
+                try:
+                    await self.hass.async_add_executor_job(imap.validate, settings)
+                except imap.ImapError as err:
+                    LOGGER.debug("IMAP validation failed: %s", err)
+                    errors["base"] = _imap_error_key(err)
+            if not errors and is_caldav:
+                key = await self._caldav_error(
+                    CalDavSettings(
+                        url=data[CONF_CALDAV_URL],
+                        username=data[CONF_CALDAV_USERNAME],
+                        password=data[CONF_CALDAV_PASSWORD],
+                    )
+                )
+                if key:
+                    errors["base"] = key
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry, unique_id=unique_id, data=data
+                )
+
+        current = {**entry.data, **(user_input or {})}
+        schema: dict[Any, Any] = {
+            vol.Required(CONF_HOST, default=current[CONF_HOST]): str,
+            vol.Required(CONF_PORT, default=current[CONF_PORT]): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=65535)
+            ),
+            vol.Optional(CONF_PASSWORD): PASSWORD_SELECTOR,
+            vol.Required(CONF_FOLDER, default=current[CONF_FOLDER]): str,
+        }
+        if is_caldav:
+            schema[vol.Required(CONF_CALDAV_URL, default=current[CONF_CALDAV_URL])] = (
+                str
+            )
+            schema[
+                vol.Required(
+                    CONF_CALDAV_USERNAME, default=current[CONF_CALDAV_USERNAME]
+                )
+            ] = str
+            schema[vol.Optional(CONF_CALDAV_PASSWORD)] = PASSWORD_SELECTOR
+        else:
+            schema[vol.Required(CONF_ICS_PATH, default=current[CONF_ICS_PATH])] = str
+        return self.async_show_form(
+            step_id="reconfigure_caldav" if is_caldav else "reconfigure",
+            data_schema=vol.Schema(schema),
+            description_placeholders={
+                "username": entry.data[CONF_USERNAME],
+                "keyword": entry.data[CONF_PROCESSED_KEYWORD],
+            },
+            errors=errors,
+        )
+
+    async def async_step_reconfigure_caldav(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """The reconfigure form for a CalDAV entry (its own texts)."""
+        return await self.async_step_reconfigure(user_input)
 
 
 def _options_schema() -> vol.Schema:

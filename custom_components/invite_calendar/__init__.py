@@ -20,6 +20,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import service
 from homeassistant.helpers.typing import ConfigType
 
+from . import issues
 from .const import (
     CONF_CALDAV_PASSWORD,
     CONF_CALDAV_URL,
@@ -192,13 +193,18 @@ async def async_setup_entry(
 async def async_unload_entry(
     hass: HomeAssistant, entry: InviteCalendarConfigEntry
 ) -> bool:
-    """Unload an Invite Calendar entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    """Unload an Invite Calendar entry. Its Repairs issues go with it: they
+    describe the running entry, and a reload starts counting afresh."""
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        issues.clear_all(hass, entry.entry_id)
+    return unloaded
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Delete the entry's state. The calendar itself (file or CalDAV
     collection) is left alone."""
+    issues.clear_all(hass, entry.entry_id)
     await StateStore(hass, entry.entry_id).async_remove()
 
 
