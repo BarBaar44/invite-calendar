@@ -230,6 +230,12 @@ class InviteCalendarEntity(
         """Service invite_calendar.accept_event."""
         return await self.coordinator.async_accept(uid)
 
+    async def async_decline_event(
+        self, uid: str, recurrence_id: str | None = None
+    ) -> ServiceResponse:
+        """Service invite_calendar.decline_event."""
+        return await self.coordinator.async_decline(uid, recurrence_id)
+
     async def async_list_events(
         self,
         start: datetime.datetime | None = None,

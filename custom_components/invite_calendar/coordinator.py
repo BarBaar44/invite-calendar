@@ -18,6 +18,10 @@ Same order as the pyscript app (reference/calendar_mailbox.py _poll_one):
 10. RSVP scan per accept policy; "accepted" written after a confirmed send
 11. fire invite_calendar_updated / invite_calendar_invite_received
 
+Declines made with the decline_event service are recorded in the same
+state.declined as policy if_free, so step 3 keeps them out of the calendar
+under every policy.
+
 Replies are sent only after the save succeeded, so a message that is
 retried never produces a second reply.
 
@@ -50,7 +54,7 @@ from homeassistant.exceptions import (
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
-from icalendar import Calendar
+from icalendar import Calendar, Event
 
 from . import freebusy
 from .const import (
@@ -70,7 +74,9 @@ from .outbound import (
     cancel_occurrence_own,
     cancel_series,
     describe,
+    is_occurrence,
     new_event,
+    parse_recurrence_id,
     update_occurrence,
     update_series,
 )
@@ -441,10 +447,7 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
             # A record from an earlier version no longer applies.
             self.state.declined.pop(uid, None)
             if decision.declined_occurrences:
-                isos = [
-                    events.aware(rid).isoformat()
-                    for rid in decision.declined_occurrences
-                ]
+                isos = [freebusy.rid_iso(rid) for rid in decision.declined_occurrences]
                 self.state.declined[uid] = {
                     "sequence": seq,
                     "whole": False,
@@ -494,7 +497,7 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
                 dirty = True
                 continue
             for iso in list(record["unsent"]):
-                rid = datetime.datetime.fromisoformat(iso).astimezone(datetime.UTC)
+                rid = freebusy.rid_from_iso(iso)
                 try:
                     await self._async_send_accept(
                         freebusy.occurrence_stub(master, rid), "DECLINED"
@@ -557,42 +560,52 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
 
     # --------------------------------------------------------------- services
 
+    def _answerable(self, uid: str) -> Event:
+        """The component an RSVP for `uid` answers: a managed event from
+        someone else. Raises ServiceValidationError otherwise."""
+        cal = self.data
+        component = events.find_event(cal, uid) if cal is not None else None
+        if component is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="event_not_found",
+                translation_placeholders={"uid": uid},
+            )
+        if uid not in self.state.organizer:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="event_not_managed",
+                translation_placeholders={"uid": uid},
+            )
+        organizer = events.get_organizer_email(component)
+        if not organizer or organizer.lower() == self.options.address.lower():
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="event_no_organizer",
+                translation_placeholders={"uid": uid},
+            )
+        return component
+
+    async def _async_send_reply_or_fail(self, component, partstat: str) -> None:
+        """Send an RSVP for a service call; any send failure fails the call."""
+        try:
+            await self._async_send_accept(component, partstat)
+        except smtp.SmtpError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="send_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
+
     async def async_accept(self, uid: str) -> dict[str, object]:
         """Service accept_event: RSVP ACCEPTED for one managed event, under
         any policy. Already accepted at this SEQUENCE: nothing is sent."""
         async with self.lock:
-            cal = self.data
-            component = events.find_event(cal, uid) if cal is not None else None
-            if component is None:
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="event_not_found",
-                    translation_placeholders={"uid": uid},
-                )
-            if uid not in self.state.organizer:
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="event_not_managed",
-                    translation_placeholders={"uid": uid},
-                )
-            organizer = events.get_organizer_email(component)
-            if not organizer or organizer.lower() == self.options.address.lower():
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="event_no_organizer",
-                    translation_placeholders={"uid": uid},
-                )
+            component = self._answerable(uid)
             seq = int(component.get("SEQUENCE", 0))
             if self.state.accepted.get(uid) == seq:
                 return {"uid": uid, "sequence": seq, "sent": False}
-            try:
-                await self._async_send_accept(component)
-            except smtp.SmtpError as err:
-                raise HomeAssistantError(
-                    translation_domain=DOMAIN,
-                    translation_key="send_failed",
-                    translation_placeholders={"error": str(err)},
-                ) from err
+            await self._async_send_reply_or_fail(component, "ACCEPTED")
             self.state.accepted[uid] = seq
             self.state.rsvp_failed.pop(uid, None)
             await self._state_store.async_save(self.state)
@@ -603,6 +616,141 @@ class InviteCalendarCoordinator(DataUpdateCoordinator[Calendar]):
                 seq,
             )
             return {"uid": uid, "sequence": seq, "sent": True}
+
+    async def async_decline(
+        self, uid: str, recurrence_id: str | None = None
+    ) -> dict[str, object]:
+        """Service decline_event: RSVP DECLINED for one managed event, or for
+        one occurrence of a series, under any policy; then leave it out of
+        the calendar, the same way policy if_free does (state.declined).
+
+        The reply goes out first: if it can't be sent, nothing changes and
+        the call fails. An earlier acceptance does not stop a decline; a new
+        version from the organizer (higher SEQUENCE) is decided again.
+        Already declined at this SEQUENCE: nothing is sent."""
+        async with self.lock:
+            name = self.config_entry.title
+            if not recurrence_id:
+                record = self.state.declined.get(uid)
+                cal = self.data
+                if (
+                    record
+                    and record.get("whole")
+                    and (cal is None or events.find_event(cal, uid) is None)
+                ):
+                    return {
+                        "uid": uid,
+                        "sequence": int(record["sequence"]),
+                        "sent": False,
+                    }
+            component = self._answerable(uid)
+            seq = int(component.get("SEQUENCE", 0))
+            result: dict[str, object] = {"uid": uid, "sequence": seq}
+
+            if recurrence_id:
+                result["recurrence_id"] = recurrence_id
+                record = self.state.declined.get(uid)
+                if (
+                    record is None
+                    or record.get("whole")
+                    or int(record.get("sequence", -1)) != seq
+                ):
+                    record = None
+                done = record.get("occurrences", []) if record else []
+                iso = self._declinable_occurrence(component, uid, recurrence_id, done)
+                if iso in done:
+                    return {**result, "sent": False}
+                if record is None:
+                    record = {
+                        "sequence": seq,
+                        "whole": False,
+                        "occurrences": [],
+                        "unsent": [],
+                    }
+                await self._async_send_reply_or_fail(
+                    freebusy.occurrence_stub(component, freebusy.rid_from_iso(iso)),
+                    "DECLINED",
+                )
+                record.setdefault("occurrences", []).append(iso)
+                self.state.declined[uid] = record
+                _LOGGER.info(
+                    "[%s] declined %s on %s (sequence %s) on request",
+                    name,
+                    uid,
+                    iso,
+                    seq,
+                )
+            else:
+                await self._async_send_reply_or_fail(component, "DECLINED")
+                end = freebusy.event_end(component)
+                self.state.declined[uid] = {
+                    "sequence": seq,
+                    "whole": True,
+                    "until": end.timestamp() if end is not None else None,
+                }
+                self.state.accepted.pop(uid, None)
+                self.state.rsvp_failed.pop(uid, None)
+                _LOGGER.info(
+                    "[%s] declined %s (sequence %s) on request", name, uid, seq
+                )
+            await self._state_store.async_save(self.state)
+
+            # Take it out of the calendar. A store failure doesn't fail the
+            # call: the reply went out and is recorded, and every poll applies
+            # the recorded declines again.
+            try:
+                cal, snapshot = await self.store.async_load()
+                await self.hass.async_add_executor_job(
+                    freebusy.apply_declines, cal, self.state
+                )
+                changes = await self.store.async_save(cal, snapshot)
+            except StoreError as err:
+                _LOGGER.warning(
+                    "[%s] declined %s stays in the calendar until the next poll, "
+                    "store failed: %s",
+                    name,
+                    uid,
+                    err,
+                )
+            else:
+                self._after_edit(cal, changes)
+            return {**result, "sent": True}
+
+    def _declinable_occurrence(
+        self, master: Event, uid: str, recurrence_id: str, declined: list[str]
+    ) -> str:
+        """The occurrence `recurrence_id` of the series `master` as recorded
+        in state.declined (freebusy.rid_iso). Raises ServiceValidationError
+        when the event doesn't repeat or has no such occurrence; one in
+        `declined` (already declined, so EXDATEd) counts as existing."""
+        if not events.is_recurring(master) or events.recurrence_key(master) is not None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="not_recurring",
+                translation_placeholders={"uid": uid},
+            )
+        cal = self.data
+        try:
+            rid = parse_recurrence_id(recurrence_id, master)
+        except OutboundError as err:
+            raise self._invalid(err) from err
+        iso = freebusy.rid_iso(rid)
+        if iso in declined:
+            return iso
+        key = int(events.aware(rid).timestamp())
+        override = any(
+            c.name == "VEVENT"
+            and str(c.get("UID")) == uid
+            and events.recurrence_key(c) == key
+            for c in cal.subcomponents
+        )
+        if not override and not is_occurrence(cal, uid, rid):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_recurrence_id",
+                translation_placeholders={"recurrence_id": recurrence_id},
+            )
+        return iso
 
     def _store_failed(self, err: StoreError, key: str) -> Exception:
         """The exception to raise for a store failure: reauth on rejected
