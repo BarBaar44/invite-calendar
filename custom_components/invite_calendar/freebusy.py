@@ -208,7 +208,7 @@ def decide(
     return decisions
 
 
-def occurrence_stub(master: Event, rid: datetime.datetime) -> Event:
+def occurrence_stub(master: Event, rid: datetime.date | datetime.datetime) -> Event:
     """The component a REPLY for one occurrence answers: the master's UID,
     SEQUENCE, ORGANIZER and SUMMARY with RECURRENCE-ID (and DTSTART) set to
     the occurrence."""
@@ -222,6 +222,23 @@ def occurrence_stub(master: Event, rid: datetime.datetime) -> Event:
     stub.add("recurrence-id", rid)
     stub.add("dtstart", rid)
     return stub
+
+
+def rid_iso(rid: datetime.date | datetime.datetime) -> str:
+    """How a declined occurrence is recorded: an aware ISO datetime, or a
+    plain ISO date for an all day series (its EXDATE must stay a DATE)."""
+    if isinstance(rid, datetime.datetime):
+        return events.aware(rid).isoformat()
+    return rid.isoformat()
+
+
+def rid_from_iso(iso: str) -> datetime.date | datetime.datetime:
+    """Back from rid_iso(). A datetime comes back in UTC: an ISO string
+    keeps only the offset, and a UTC EXDATE is valid next to TZID ones
+    (matched by instant, not by text)."""
+    if len(iso) == 10:
+        return datetime.date.fromisoformat(iso)
+    return datetime.datetime.fromisoformat(iso).astimezone(datetime.UTC)
 
 
 def apply_declines(cal: Calendar, state: EntryState) -> list[str]:
@@ -242,10 +259,7 @@ def apply_declines(cal: Calendar, state: EntryState) -> list[str]:
             continue
         hit = False
         for iso in record.get("occurrences", []):
-            # UTC: an ISO string keeps only the offset, and a UTC EXDATE is
-            # valid next to TZID ones (matched by instant, not by text).
-            rid = datetime.datetime.fromisoformat(iso).astimezone(datetime.UTC)
-            if events.cancel_occurrence(cal, uid, _Prop(rid)):
+            if events.cancel_occurrence(cal, uid, _Prop(rid_from_iso(iso))):
                 hit = True
         if hit:
             changed.append(uid)
@@ -256,4 +270,4 @@ def apply_declines(cal: Calendar, state: EntryState) -> list[str]:
 class _Prop:
     """Just enough of an icalendar property for events.cancel_occurrence."""
 
-    dt: datetime.datetime
+    dt: datetime.date | datetime.datetime

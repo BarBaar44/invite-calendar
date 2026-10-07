@@ -159,6 +159,20 @@
         }
       }
     },
+    "decline_event": {
+      "name": "Decline event",
+      "description": "Sends a decline to the organizer of an invitation, or of one occurrence of a series, under any accept policy, and leaves it out of the calendar. Works on an invitation that was already accepted. Does nothing when the current version was already declined.",
+      "fields": {
+        "uid": {
+          "name": "UID",
+          "description": "UID of the event, as returned by list_events."
+        },
+        "recurrence_id": {
+          "name": "Occurrence",
+          "description": "recurrence_id from list_events: decline only that occurrence of a series."
+        }
+      }
+    },
     "list_events": {
       "name": "List events",
       "description": "Occurrences in a window with UID, organizer, attendees and whether the calendar manages and accepted them. Default: the next 7 days.",
@@ -300,7 +314,7 @@
           "attendee_cn": "Name in replies"
         },
         "data_description": {
-          "accept_policy": "Never: no replies. Always: accept every invitation. If it has a location: accept once a location is set. If the time is free: accept, or decline when something already takes that time (for a series only the clashing dates). Manual: only the accept_event action accepts, so an automation decides.",
+          "accept_policy": "Never: no replies. Always: accept every invitation. If it has a location: accept once a location is set. If the time is free: accept, or decline when something already takes that time (for a series only the clashing dates). Manual: only the accept_event and decline_event actions answer, so an automation decides.",
           "missing_location_reply": "Email the organizer of an invitation without a location.",
           "missing_location_text": "One sentence, included in that email.",
           "retention_days": "0 keeps everything. On a CalDAV calendar only events that arrived by mail are ever removed.",
@@ -338,7 +352,7 @@
         "always": "Always",
         "if_location": "If it has a location",
         "if_free": "If the time is free",
-        "manual": "Manual (accept_event action)"
+        "manual": "Manual (accept_event and decline_event actions)"
       }
     }
   }

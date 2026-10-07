@@ -171,7 +171,7 @@ def parse_recurrence_id(text: str, master: Event) -> datetime.date | datetime.da
     raise OutboundError("invalid_recurrence_id", recurrence_id=text)
 
 
-def _is_occurrence(
+def is_occurrence(
     cal: Calendar, uid: str, rid: datetime.date | datetime.datetime
 ) -> bool:
     """True when the series `uid` has an occurrence originally at `rid`
@@ -324,7 +324,7 @@ def update_occurrence(
     key = int(events.aware(rid).timestamp())
     override = next((c for c in comps[1:] if events.recurrence_key(c) == key), None)
     if override is None:
-        if not _is_occurrence(cal, uid, rid):
+        if not is_occurrence(cal, uid, rid):
             raise OutboundError("invalid_recurrence_id", recurrence_id=recurrence_id)
         override = copy.deepcopy(master)
         for prop in ("RRULE", "RDATE", "EXDATE", "RECURRENCE-ID"):
@@ -373,7 +373,7 @@ def cancel_occurrence_own(
     key = int(events.aware(rid).timestamp())
     if not any(
         events.recurrence_key(c) == key for c in comps[1:]
-    ) and not _is_occurrence(cal, uid, rid):
+    ) and not is_occurrence(cal, uid, rid):
         raise OutboundError("invalid_recurrence_id", recurrence_id=recurrence_id)
     seq = events.bump_sequence(master)
     _stamp(master)

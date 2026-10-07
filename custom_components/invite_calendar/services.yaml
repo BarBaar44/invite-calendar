@@ -16,6 +16,22 @@ accept_event:
       selector:
         text:
 
+decline_event:
+  target:
+    entity:
+      integration: invite_calendar
+      domain: calendar
+  fields:
+    uid:
+      required: true
+      example: "040000008200E00074C5B7101A82E008"
+      selector:
+        text:
+    recurrence_id:
+      example: "20261020T090000"
+      selector:
+        text:
+
 list_events:
   target:
     entity:

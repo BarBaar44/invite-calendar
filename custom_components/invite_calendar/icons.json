@@ -6,6 +6,9 @@
     "accept_event": {
       "service": "mdi:calendar-check"
     },
+    "decline_event": {
+      "service": "mdi:calendar-remove-outline"
+    },
     "list_events": {
       "service": "mdi:calendar-search"
     },

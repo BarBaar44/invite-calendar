@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0 (2026-10-07)
+
+* New action `decline_event`: decline an invitation, or with
+  `recurrence_id` one occurrence of a series, under any accept policy. The
+  organizer gets a "declined" reply and the event (or that date) is left
+  out of the calendar. It also works on an invitation that was accepted
+  before. A resent copy of the same version stays out; a new version from
+  the organizer is shown again and waits for a new answer. If the reply
+  can't be sent, nothing changes and the action fails.
+* The Manual accept policy now means: only `accept_event` and
+  `decline_event` answer.
+
 ## 1.1.1 (2026-10-06)
 
 * CalDAV: correcting the username of a Nextcloud calendar no longer keeps

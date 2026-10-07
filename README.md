@@ -78,7 +78,7 @@ Settings, Devices & services, Invite Calendar, the entry, **Configure**.
 
 | Option | Default | What it does |
 |---|---|---|
-| Accept invitations | Never | Never, Always, If it has a location, If the time is free (see below), or Manual (only the `accept_event` action accepts, so an automation decides) |
+| Accept invitations | Never | Never, Always, If it has a location, If the time is free (see below), or Manual (only the `accept_event` and `decline_event` actions answer, so an automation decides) |
 | Ask for a missing location | off | Email the organizer of an invitation without a location, with your sentence on why it matters |
 | Remove events after | 30 days (.ics), 0 (CalDAV) | 0 keeps everything; on CalDAV only events that arrived by mail are ever removed |
 | Only read mail from the last | 14 days | Mail that arrived earlier is left alone (IMAP `SINCE`, whole days); 0 reads the whole folder |
@@ -186,6 +186,7 @@ skipped with a notification. In an .ics file, events that ended more than
 | `invite_calendar.poll` | Check the mailbox now. |
 | `invite_calendar.list_events` | Occurrences in a window (default: the next 7 days) with what `calendar.get_events` leaves out: `uid`, `recurrence_id`, `organizer`, `attendees`, `status`, `sequence`, `managed` (arrived by mail), `accepted`. Returns a response. |
 | `invite_calendar.accept_event` | Accept the invitation with this `uid` now, under any policy. Does nothing when this version was already accepted. |
+| `invite_calendar.decline_event` | Decline the invitation with this `uid` now, under any policy, also when it was accepted before, and leave it out of the calendar. With `recurrence_id` (from `list_events`) only that occurrence is declined. The reply is sent first; if it can't be sent, nothing changes. A new version from the organizer is shown again. Does nothing when this version (or occurrence) was already declined. |
 | `invite_calendar.create_event` | Add an event organized by this calendar and email the invitation to `attendees`. Timed (`start_date_time`, `end_date_time`, default one hour) or all day (`start_date`, `end_date`), optional `rrule` such as `FREQ=WEEKLY;COUNT=4`. Returns `uid`, `invited`, `pending`. |
 | `invite_calendar.update_event` | Change an event this calendar organizes; only the fields given change. With `recurrence_id` (from `list_events`) only that occurrence changes. Moving only the start keeps the duration. Removed attendees get a cancellation. `rrule: ""` stops the repetition. |
 | `invite_calendar.cancel_event` | Cancel an event this calendar organizes, or with `recurrence_id` one occurrence of it. The cancellation is sent first; if it can't be sent, nothing changes. |

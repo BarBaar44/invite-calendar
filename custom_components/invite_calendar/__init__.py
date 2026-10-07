@@ -33,6 +33,7 @@ from .const import (
     SERVICE_ACCEPT_EVENT,
     SERVICE_CANCEL_EVENT,
     SERVICE_CREATE_EVENT,
+    SERVICE_DECLINE_EVENT,
     SERVICE_LIST_EVENTS,
     SERVICE_POLL,
     SERVICE_UPDATE_EVENT,
@@ -70,6 +71,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         entity_domain=CALENDAR_DOMAIN,
         schema={vol.Required("uid"): cv.string},
         func="async_accept_event",
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_DECLINE_EVENT,
+        entity_domain=CALENDAR_DOMAIN,
+        schema={
+            vol.Required("uid"): cv.string,
+            vol.Optional("recurrence_id"): cv.string,
+        },
+        func="async_decline_event",
         supports_response=SupportsResponse.OPTIONAL,
     )
     service.async_register_platform_entity_service(

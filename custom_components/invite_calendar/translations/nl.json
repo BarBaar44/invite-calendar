@@ -159,6 +159,20 @@
         }
       }
     },
+    "decline_event": {
+      "name": "Afspraak afwijzen",
+      "description": "Stuurt een afwijzing naar de organisator van een uitnodiging, of van één moment van een reeks, bij elk acceptatiebeleid, en laat die weg uit de agenda. Werkt ook op een uitnodiging die al geaccepteerd is. Doet niets als de huidige versie al afgewezen is.",
+      "fields": {
+        "uid": {
+          "name": "UID",
+          "description": "UID van de afspraak, zoals list_events die teruggeeft."
+        },
+        "recurrence_id": {
+          "name": "Moment",
+          "description": "recurrence_id uit list_events: alleen dat moment van een reeks afwijzen."
+        }
+      }
+    },
     "list_events": {
       "name": "Afspraken opvragen",
       "description": "Afspraken in een periode met UID, organisator, deelnemers en of de agenda ze beheert en accepteerde. Standaard: de komende 7 dagen.",
@@ -300,7 +314,7 @@
           "attendee_cn": "Naam in antwoorden"
         },
         "data_description": {
-          "accept_policy": "Nooit: geen antwoorden. Altijd: elke uitnodiging accepteren. Als er een locatie is: accepteren zodra er een locatie is. Als de tijd vrij is: accepteren, of afwijzen als er al iets op dat moment staat (bij een reeks alleen de botsende data). Handmatig: alleen de accept_event actie accepteert, zodat een automatisering beslist.",
+          "accept_policy": "Nooit: geen antwoorden. Altijd: elke uitnodiging accepteren. Als er een locatie is: accepteren zodra er een locatie is. Als de tijd vrij is: accepteren, of afwijzen als er al iets op dat moment staat (bij een reeks alleen de botsende data). Handmatig: alleen de accept_event en decline_event acties antwoorden, zodat een automatisering beslist.",
           "missing_location_reply": "Mail de organisator van een uitnodiging zonder locatie.",
           "missing_location_text": "Eén zin, opgenomen in die mail.",
           "retention_days": "0 bewaart alles. In een CalDAV agenda worden alleen afspraken verwijderd die per mail binnenkwamen.",
@@ -338,7 +352,7 @@
         "always": "Altijd",
         "if_location": "Als er een locatie is",
         "if_free": "Als de tijd vrij is",
-        "manual": "Handmatig (accept_event actie)"
+        "manual": "Handmatig (accept_event en decline_event acties)"
       }
     }
   }

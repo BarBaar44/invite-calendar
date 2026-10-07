@@ -87,6 +87,7 @@ EVENT_INVITE_RECEIVED: Final = "invite_calendar_invite_received"
 
 SERVICE_POLL: Final = "poll"
 SERVICE_ACCEPT_EVENT: Final = "accept_event"
+SERVICE_DECLINE_EVENT: Final = "decline_event"
 SERVICE_LIST_EVENTS: Final = "list_events"
 SERVICE_CREATE_EVENT: Final = "create_event"
 SERVICE_UPDATE_EVENT: Final = "update_event"
