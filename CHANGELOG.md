@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.2 (2026-10-07)
+
+* `list_events` and `calendar.get_events` gave every event a
+  `recurrence_id`, single events included, so a single event looked like
+  one occurrence of a series and passing that value to `update_event`,
+  `cancel_event` or `decline_event` failed with `not_recurring`. Only
+  occurrences of a recurring series (and invitations to one occurrence of
+  someone else's series) now carry a `recurrence_id`; single events give
+  `null`. The response format is otherwise unchanged (#10).
+
 ## 1.2.1 (2026-10-07)
 
 * A setup dialog that was lost (browser refresh, closed tab) no longer

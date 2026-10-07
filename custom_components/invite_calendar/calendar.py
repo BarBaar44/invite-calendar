@@ -41,8 +41,35 @@ async def async_setup_entry(
     async_add_entities([InviteCalendarEntity(entry.runtime_data, entry)])
 
 
-def _to_calendar_event(component: Event) -> CalendarEvent | None:
-    """One expanded occurrence as a CalendarEvent, or None to hide it."""
+def _series_uids(cal: Calendar) -> set[str]:
+    """UIDs that belong to a recurring series, judged from the STORED
+    components: a master with RRULE or RDATE, or an override carrying
+    RECURRENCE-ID (also a lone one, an invite to one occurrence of someone
+    else's series).
+
+    The expanded output can't tell: recurring-ical-events stamps a
+    RECURRENCE-ID on every occurrence it yields, single events included.
+    """
+    out: set[str] = set()
+    for c in cal.walk("VEVENT"):
+        uid = c.get("UID")
+        if uid is None:
+            continue
+        if (
+            c.get("RRULE") is not None
+            or c.get("RDATE") is not None
+            or c.get("RECURRENCE-ID") is not None
+        ):
+            out.add(str(uid))
+    return out
+
+
+def _to_calendar_event(
+    component: Event, recurring: bool = True
+) -> CalendarEvent | None:
+    """One expanded occurrence as a CalendarEvent, or None to hide it.
+    `recurring` False drops the RECURRENCE-ID the expansion stamped on a
+    single event."""
     if str(component.get("STATUS", "")).upper() == "CANCELLED":
         return None
     start_raw = component.get("DTSTART")
@@ -62,7 +89,7 @@ def _to_calendar_event(component: Event) -> CalendarEvent | None:
             end = start + datetime.timedelta(days=1)
         end = max(end, start + datetime.timedelta(days=1))
 
-    rid = component.get("RECURRENCE-ID")
+    rid = component.get("RECURRENCE-ID") if recurring else None
     description = component.get("DESCRIPTION")
     location = component.get("LOCATION")
     return CalendarEvent(
@@ -84,13 +111,15 @@ def _occurrences(
 
     Uses recurring-ical-events, which applies EXDATE and RECURRENCE-ID
     overrides and keeps wall clock time across DST. A series that can't be
-    expanded is skipped instead of hiding the whole calendar.
+    expanded is skipped instead of hiding the whole calendar. Only
+    occurrences of a series get a recurrence_id (_series_uids).
     """
     out: list[tuple[Event, CalendarEvent]] = []
+    series = _series_uids(cal)
     query = recurring_ical_events.of(cal, skip_bad_series=True)
     for component in query.between(start, end):
         try:
-            event = _to_calendar_event(component)
+            event = _to_calendar_event(component, str(component.get("UID")) in series)
         except HomeAssistantError as err:
             _LOGGER.warning("Skipping event %s: %s", component.get("UID"), err)
             continue

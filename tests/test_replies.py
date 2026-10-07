@@ -314,6 +314,25 @@ async def test_list_events(
     assert len(await list_events(hass)) == 1
 
 
+async def test_list_events_recurrence_id_only_for_series(
+    hass: HomeAssistant, entry: MockConfigEntry, mailbox: FakeMailbox, outbox: Outbox
+) -> None:
+    """A single event has recurrence_id None (#10); every occurrence of a
+    series has one, which update/cancel/decline accept."""
+    await start(hass, entry)
+    mailbox.add(mail("REQUEST", [vev("single", future(1))], "m1"))
+    mailbox.add(mail("REQUEST", [vev("r", future(2), rrule=WEEKLY)], "m2"))
+    await poll(hass, entry)
+
+    got = await list_events(hass, duration={"days": 10})
+    single = [e for e in got if e["uid"] == "single"]
+    series = [e for e in got if e["uid"] == "r"]
+    assert len(single) == 1 and single[0]["recurrence_id"] is None
+    assert len(series) == 2
+    assert all(e["recurrence_id"] for e in series)
+    assert len({e["recurrence_id"] for e in series}) == 2
+
+
 async def test_list_events_naive_times_are_local(
     hass: HomeAssistant, entry: MockConfigEntry, mailbox: FakeMailbox, outbox: Outbox
 ) -> None:
