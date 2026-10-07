@@ -129,6 +129,7 @@
     },
     "abort": {
       "already_configured": "This mailbox folder is already set up.",
+      "already_in_progress": "Setup of this mailbox folder is already in progress. Finish or close that dialog first, or restart Home Assistant if it was lost.",
       "reauth_successful": "Login updated.",
       "reconfigure_successful": "Settings updated."
     }

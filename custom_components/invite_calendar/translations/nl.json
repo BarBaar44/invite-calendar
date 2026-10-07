@@ -129,6 +129,7 @@
     },
     "abort": {
       "already_configured": "Deze mailboxmap is al ingesteld.",
+      "already_in_progress": "Deze mailboxmap wordt al ingesteld. Rond dat venster eerst af of sluit het, of herstart Home Assistant als het kwijt is.",
       "reauth_successful": "Login bijgewerkt.",
       "reconfigure_successful": "Instellingen bijgewerkt."
     }

@@ -14,7 +14,7 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, UnknownFlow
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.invite_calendar.const import (
@@ -550,3 +550,39 @@ async def test_reconfigure_caldav(
     assert setup_caldav_entry.data[CONF_PASSWORD] == "pw"
     await hass.async_block_till_done()
     assert await hass.config_entries.async_unload(setup_caldav_entry.entry_id)
+
+
+async def test_lost_setup_dialog_does_not_block(
+    hass: HomeAssistant, mailbox: FakeMailbox, ics_path: Path
+) -> None:
+    """A setup dialog left open (browser refresh) must not block a new one
+    for the same mailbox; once one creates the entry, the other is gone."""
+    lost = await start(hass)
+    lost = await hass.config_entries.flow.async_configure(lost["flow_id"], MAILBOX)
+    assert lost["type"] is FlowResultType.MENU
+
+    result = await to_store_step(hass, STORE_ICS)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_NAME: "Vakantie", CONF_ICS_PATH: str(ics_path)}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+    # HA ends the lost dialog once the entry exists: no second entry.
+    with pytest.raises(UnknownFlow):
+        await hass.config_entries.flow.async_configure(
+            lost["flow_id"], {"next_step_id": STORE_ICS}
+        )
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(result["result"].entry_id)
+
+
+def test_abort_reasons_have_text() -> None:
+    """already_in_progress can still come from HA itself (two flows racing
+    on the same unique id); it showed as a raw key."""
+    import json
+
+    folder = Path(__file__).parent.parent / "custom_components" / DOMAIN
+    for name in ("strings.json", "translations/en.json", "translations/nl.json"):
+        aborts = json.loads((folder / name).read_text())["config"]["abort"]
+        assert aborts.get("already_in_progress"), name

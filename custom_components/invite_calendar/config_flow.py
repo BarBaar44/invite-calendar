@@ -196,8 +196,13 @@ class InviteCalendarConfigFlow(ConfigFlow, domain=DOMAIN):
             if not _valid_keyword(settings.keyword):
                 errors[CONF_PROCESSED_KEYWORD] = "invalid_keyword"
             else:
+                # raise_on_progress=False: a setup dialog that was lost (a
+                # browser refresh, a closed tab) must not block a new one
+                # until HA restarts. Duplicates are still refused here and
+                # again right before the entry is created.
                 await self.async_set_unique_id(
-                    f"{settings.username}@{settings.host}/{settings.folder}".lower()
+                    f"{settings.username}@{settings.host}/{settings.folder}".lower(),
+                    raise_on_progress=False,
                 )
                 self._abort_if_unique_id_configured()
                 try:
@@ -261,6 +266,7 @@ class InviteCalendarConfigFlow(ConfigFlow, domain=DOMAIN):
             ):
                 errors[CONF_ICS_PATH] = err
             else:
+                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=name,
                     data={
@@ -363,6 +369,7 @@ class InviteCalendarConfigFlow(ConfigFlow, domain=DOMAIN):
             elif key := await self._caldav_error(settings):
                 errors["base"] = key
             else:
+                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=self._name,
                     data={
