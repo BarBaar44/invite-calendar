@@ -37,6 +37,29 @@ async def test_weekly_series_keeps_wall_clock_across_dst(hass: HomeAssistant) ->
     assert got[0].recurrence_id == "20261020T090000"
 
 
+async def test_recurrence_id_only_for_series(hass: HomeAssistant) -> None:
+    """recurring-ical-events stamps RECURRENCE-ID on single events too
+    (#10); only occurrences of a series may carry one."""
+    start = datetime.datetime(2026, 10, 20, 9, 0, tzinfo=TZ)
+    rid = datetime.datetime(2026, 11, 2, 9, 0, tzinfo=TZ)
+    got = expand(
+        cal_of(
+            vev("single", start + datetime.timedelta(hours=3)),
+            vev("r", start, rrule={"FREQ": "WEEKLY", "COUNT": 2}),
+            # Invite to one occurrence of someone else's series: no master.
+            vev("lone", rid + datetime.timedelta(hours=1), rid=rid),
+        ),
+        WINDOW_START,
+        WINDOW_END,
+    )
+    by_uid: dict[str, list] = {}
+    for e in got:
+        by_uid.setdefault(e.uid, []).append(e.recurrence_id)
+    assert by_uid["single"] == [None]
+    assert by_uid["r"] == ["20261020T090000", "20261027T090000"]
+    assert by_uid["lone"] == ["20261102T090000"]
+
+
 async def test_exdate_honoured(hass: HomeAssistant) -> None:
     start = datetime.datetime(2026, 10, 20, 9, 0, tzinfo=TZ)
     master = vev("r", start, rrule={"FREQ": "WEEKLY", "COUNT": 3})
