@@ -46,9 +46,10 @@ integration again.
   login asks for the new password directly (reauthentication).
 * `list_events` only looks 7 days ahead unless you pass `duration` or
   `end`.
-* CalDAV setup says the URL is not a calendar (HTTP 404) though the calendar
-  exists: the username must be one that can see it, usually the owner named
-  in the URL (`.../calendars/<user>/...`). In 1.1.0 and earlier a wrong
+* CalDAV setup finds no calendars though they exist: the username must be
+  one that can write to them, usually the owner (`.../calendars/<user>/...`
+  in Nextcloud). If the server doesn't support discovery, enter the
+  calendar's own URL as the server address. In 1.1.0 and earlier a wrong
   username kept failing even after you corrected it, until Home Assistant
   restarted (Nextcloud session cookies); update to 1.1.1 or later.
 
@@ -67,11 +68,13 @@ entry. Reconfigure does not move events to a new file or CalDAV calendar.
 3. **Calendar**, for an .ics file: name, and the file inside the
    configuration folder. Default `/config/invite_calendar/<mailbox>.ics`. An
    existing file is used as is.
-4. **Calendar**, for CalDAV: name, collection URL, username and an app
-   password. For Nextcloud the URL is
-   `https://<host>/remote.php/dav/calendars/<user>/<calendar>/` (Calendar
-   app, calendar menu, Copy private link); create the app password under
-   Personal settings, Security, Devices & sessions.
+4. **Calendar**, for CalDAV: name, the server address (for example
+   `cloud.example.com`), username and an app password. The calendars on the
+   server that hold events and that this login may write to are listed;
+   pick one. Read only calendars (such as Nextcloud's contact birthdays)
+   and task lists are not offered. A calendar's own URL also works as the
+   server address. For Nextcloud, create the app password under Personal
+   settings, Security, Devices & sessions.
 
 ### A shared CalDAV calendar
 

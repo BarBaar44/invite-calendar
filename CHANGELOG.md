@@ -14,6 +14,10 @@
 * Reconfigure: change the IMAP server, port, password and folder, and the
   .ics file or the CalDAV URL, username and password, without removing the
   entry. The username and the processed keyword stay fixed.
+* CalDAV setup asks for the server address instead of the calendar URL,
+  and lists the calendars found there (standard CalDAV discovery) to pick
+  from: only event calendars this login can write to. A calendar's own URL
+  still works. Existing entries are unchanged.
 * Repairs issues instead of only log lines: mailbox or calendar unreachable
   for over an hour, outgoing mail login rejected, sender address refused by
   the mail server. Each clears by itself once it works again.
