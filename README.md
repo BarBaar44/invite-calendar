@@ -39,15 +39,27 @@ integration again.
   addresses or event content, safe to attach to an issue.
 * An invitation that can't be read is retried twice and then skipped with a
   notification.
+* Problems that need you show in **Settings, Repairs**: the mailbox or the
+  calendar unreachable for over an hour, the outgoing mail login rejected,
+  or the mail server refusing to send as the calendar's address. They
+  clear by themselves once things work again. A rejected IMAP or CalDAV
+  login asks for the new password directly (reauthentication).
 * `list_events` only looks 7 days ahead unless you pass `duration` or
   `end`.
-* CalDAV setup says the URL is not a calendar (HTTP 404) though the calendar
-  exists: the username must be one that can see it, usually the owner named
-  in the URL (`.../calendars/<user>/...`). In 1.1.0 and earlier a wrong
+* CalDAV setup finds no calendars though they exist: the username must be
+  one that can write to them, usually the owner (`.../calendars/<user>/...`
+  in Nextcloud). If the server doesn't support discovery, enter the
+  calendar's own URL as the server address. In 1.1.0 and earlier a wrong
   username kept failing even after you corrected it, until Home Assistant
   restarted (Nextcloud session cookies); update to 1.1.1 or later.
 
 ## Setup
+
+To change the server, a password, the folder or where the calendar is
+stored later: Settings, Devices & services, Invite Calendar, the entry,
+three dots, **Reconfigure**. The username and the processed keyword stay
+as they are (they identify the calendar); for another mailbox, add a new
+entry. Reconfigure does not move events to a new file or CalDAV calendar.
 
 1. **Mailbox**: IMAP server (implicit TLS, port 993), username, password
    (use an app password where your provider offers one), folder, and the
@@ -56,11 +68,13 @@ integration again.
 3. **Calendar**, for an .ics file: name, and the file inside the
    configuration folder. Default `/config/invite_calendar/<mailbox>.ics`. An
    existing file is used as is.
-4. **Calendar**, for CalDAV: name, collection URL, username and an app
-   password. For Nextcloud the URL is
-   `https://<host>/remote.php/dav/calendars/<user>/<calendar>/` (Calendar
-   app, calendar menu, Copy private link); create the app password under
-   Personal settings, Security, Devices & sessions.
+4. **Calendar**, for CalDAV: name, the server address (for example
+   `cloud.example.com`), username and an app password. The calendars on the
+   server that hold events and that this login may write to are listed;
+   pick one. Read only calendars (such as Nextcloud's contact birthdays)
+   and task lists are not offered. A calendar's own URL also works as the
+   server address. For Nextcloud, create the app password under Personal
+   settings, Security, Devices & sessions.
 
 ### A shared CalDAV calendar
 

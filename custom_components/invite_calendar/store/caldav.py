@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from urllib.parse import quote, urljoin
+from urllib.parse import quote, urljoin, urlsplit
 from xml.etree import ElementTree as ET
 
 import aiohttp
@@ -346,3 +346,244 @@ async def async_validate(hass: HomeAssistant, settings: CalDavSettings) -> int:
     StoreError."""
     store = CalDavStore(hass, settings)
     return len(await store.async_fetch())
+
+
+# ------------------------------------------------------------------ discovery
+#
+# RFC 6764 / 4791 / 5397: from a server address to its calendars.
+#
+#   1. PROPFIND the address itself: a calendar collection is the answer
+#      already (someone pasted the full URL).
+#   2. Its current-user-principal; if it has none, /.well-known/caldav first
+#      (Nextcloud redirects that to /remote.php/dav/).
+#   3. The principal's calendar-home-set.
+#   4. PROPFIND Depth 1 on the home: every child whose resourcetype is a
+#      calendar, that holds events (VEVENT) and that this login may write to.
+#
+# Redirects are followed by hand, at most MAX_REDIRECTS, and only on the same
+# host, so the Authorization header never goes anywhere else.
+
+MAX_REDIRECTS = 5
+
+_PROPFIND_START = (
+    b'<?xml version="1.0" encoding="utf-8"?>'
+    b'<d:propfind xmlns:d="DAV:"><d:prop>'
+    b"<d:current-user-principal/><d:resourcetype/><d:displayname/>"
+    b"</d:prop></d:propfind>"
+)
+_PROPFIND_HOME = (
+    b'<?xml version="1.0" encoding="utf-8"?>'
+    b'<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+    b"<d:prop><c:calendar-home-set/></d:prop></d:propfind>"
+)
+_PROPFIND_CALENDARS = (
+    b'<?xml version="1.0" encoding="utf-8"?>'
+    b'<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+    b"<d:prop><d:resourcetype/><d:displayname/>"
+    b"<c:supported-calendar-component-set/><d:current-user-privilege-set/>"
+    b"</d:prop></d:propfind>"
+)
+_WRITE_PRIVILEGES = {"write", "write-content", "all"}
+
+
+class CalDavDiscoveryError(StoreError):
+    """The server answered, but no calendar could be found through it."""
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarInfo:
+    """One calendar the login can use."""
+
+    url: str
+    name: str
+
+
+def server_url(text: str) -> str:
+    """What someone typed as the server: https:// is assumed when no scheme
+    is given."""
+    text = text.strip()
+    if "://" not in text:
+        text = "https://" + text
+    return text
+
+
+def _ok_props(response: ET.Element) -> list[ET.Element]:
+    out = []
+    for propstat in response.findall(f"{{{DAV}}}propstat"):
+        status = propstat.findtext(f"{{{DAV}}}status") or ""
+        prop = propstat.find(f"{{{DAV}}}prop")
+        if " 200 " in f"{status} " and prop is not None:
+            out.append(prop)
+    return out
+
+
+def _responses(base_url: str, body: str) -> list[tuple[str, list[ET.Element]]]:
+    """(absolute href, [200 prop elements]) per response in a multistatus."""
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError as err:
+        raise CalDavDiscoveryError(f"not a multistatus response: {err}") from err
+    if root.tag != f"{{{DAV}}}multistatus":
+        raise CalDavDiscoveryError(f"unexpected response element {root.tag}")
+    out = []
+    for response in root.findall(f"{{{DAV}}}response"):
+        href = response.findtext(f"{{{DAV}}}href")
+        if href:
+            out.append((urljoin(base_url, href.strip()), _ok_props(response)))
+    return out
+
+
+def _find(props: list[ET.Element], tag: str) -> ET.Element | None:
+    for prop in props:
+        found = prop.find(tag)
+        if found is not None:
+            return found
+    return None
+
+
+def _href_in(props: list[ET.Element], tag: str, base_url: str) -> str | None:
+    element = _find(props, tag)
+    href = element.findtext(f"{{{DAV}}}href") if element is not None else None
+    return urljoin(base_url, href.strip()) if href else None
+
+
+def _is_calendar(props: list[ET.Element]) -> bool:
+    rtype = _find(props, f"{{{DAV}}}resourcetype")
+    return rtype is not None and rtype.find(f"{{{CALDAV}}}calendar") is not None
+
+
+def _holds_events(props: list[ET.Element]) -> bool:
+    comps = _find(props, f"{{{CALDAV}}}supported-calendar-component-set")
+    if comps is None:
+        return True  # not reported: any component
+    names = {c.get("name", "").upper() for c in comps.findall(f"{{{CALDAV}}}comp")}
+    return "VEVENT" in names
+
+
+def _writable(props: list[ET.Element]) -> bool:
+    privs = _find(props, f"{{{DAV}}}current-user-privilege-set")
+    if privs is None:
+        return True  # not reported: assume so, the first PUT will tell
+    names = {
+        child.tag.split("}", 1)[-1]
+        for priv in privs.findall(f"{{{DAV}}}privilege")
+        for child in priv
+    }
+    return bool(names & _WRITE_PRIVILEGES)
+
+
+def _name(props: list[ET.Element], url: str) -> str:
+    element = _find(props, f"{{{DAV}}}displayname")
+    name = (element.text or "").strip() if element is not None else ""
+    return name or url.rstrip("/").rsplit("/", 1)[-1]
+
+
+class _Discovery:
+    """One discovery run with one login."""
+
+    def __init__(self, session: aiohttp.ClientSession, username: str, password: str):
+        self.session = session
+        self.authorization = _basic_auth(username, password)
+
+    async def propfind(self, url: str, depth: str, body: bytes) -> tuple[str, str]:
+        """(final URL, multistatus body). Follows same host redirects."""
+        origin = urlsplit(url)[:2]
+        for _ in range(MAX_REDIRECTS + 1):
+            headers = {
+                "Authorization": self.authorization,
+                "Depth": depth,
+                "Content-Type": "application/xml; charset=utf-8",
+            }
+            try:
+                async with self.session.request(
+                    "PROPFIND",
+                    url,
+                    data=body,
+                    headers=headers,
+                    timeout=TIMEOUT,
+                    allow_redirects=False,
+                ) as resp:
+                    status = resp.status
+                    location = resp.headers.get("Location")
+                    text = await resp.text(errors="replace")
+            except (aiohttp.ClientError, TimeoutError) as err:
+                raise StoreError(f"PROPFIND {url}: {err!r}") from err
+            if status == 401:
+                raise StoreAuthError(f"PROPFIND {url}: HTTP 401 Unauthorized")
+            if status in (301, 302, 303, 307, 308) and location:
+                target = urljoin(url, location)
+                if urlsplit(target)[:2] != origin:
+                    raise CalDavDiscoveryError(
+                        f"PROPFIND {url}: redirected to another server {target}"
+                    )
+                url = target
+                continue
+            if status != 207:
+                raise CalDavDiscoveryError(f"PROPFIND {url}: HTTP {status}")
+            return url, text
+        raise CalDavDiscoveryError(f"PROPFIND {url}: too many redirects")
+
+    async def principal(self, start: str) -> tuple[list[CalendarInfo], str | None]:
+        """([that calendar] when `start` is one, else []), and the principal
+        URL found through `start`."""
+        url, text = await self.propfind(start, "0", _PROPFIND_START)
+        responses = _responses(url, text)
+        if not responses:
+            return [], None
+        href, props = responses[0]
+        if _is_calendar(props):
+            return [CalendarInfo(normalize_url(href), _name(props, href))], None
+        return [], _href_in(props, f"{{{DAV}}}current-user-principal", url)
+
+    async def calendars(self, principal: str) -> list[CalendarInfo]:
+        url, text = await self.propfind(principal, "0", _PROPFIND_HOME)
+        responses = _responses(url, text)
+        home = (
+            _href_in(responses[0][1], f"{{{CALDAV}}}calendar-home-set", url)
+            if responses
+            else None
+        )
+        if home is None:
+            raise CalDavDiscoveryError(f"{principal} has no calendar-home-set")
+        url, text = await self.propfind(home, "1", _PROPFIND_CALENDARS)
+        out = [
+            CalendarInfo(normalize_url(href), _name(props, href))
+            for href, props in _responses(url, text)
+            if _is_calendar(props) and _holds_events(props) and _writable(props)
+        ]
+        return sorted(out, key=lambda c: (c.name.lower(), c.url))
+
+
+async def async_discover(
+    hass: HomeAssistant,
+    server: str,
+    username: str,
+    password: str,
+    session: aiohttp.ClientSession | None = None,
+) -> list[CalendarInfo]:
+    """The event calendars `username` can write to on `server` (an address
+    like cloud.example.com, any URL on it, or a calendar's own URL).
+
+    Raises StoreAuthError (login rejected), StoreError (unreachable) or
+    CalDavDiscoveryError (no CalDAV, or no usable calendar found)."""
+    disc = _Discovery(
+        session or async_get_caldav_session(hass), username.strip(), password
+    )
+    start = server_url(server)
+    principal = None
+    try:
+        found, principal = await disc.principal(start)
+        if found:
+            return found
+    except CalDavDiscoveryError:
+        _LOGGER.debug("No CalDAV answer at %s, trying .well-known", start)
+    if principal is None:
+        found, principal = await disc.principal(urljoin(start, "/.well-known/caldav"))
+        if found:
+            return found
+    if principal is None:
+        raise CalDavDiscoveryError(f"{start}: no current-user-principal")
+    calendars = await disc.calendars(principal)
+    if not calendars:
+        raise CalDavDiscoveryError(f"{principal}: no writable event calendars")
+    return calendars

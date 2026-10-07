@@ -33,7 +33,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.invite_calendar.const import (
+    CONF_CALDAV_CALENDAR,
     CONF_CALDAV_PASSWORD,
+    CONF_CALDAV_SERVER,
     CONF_CALDAV_URL,
     CONF_CALDAV_USERNAME,
     CONF_FOLDER,
@@ -66,6 +68,17 @@ MULTISTATUS = (
 )
 
 
+PROPFIND_CALENDAR = (
+    '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" '
+    'xmlns:cal="urn:ietf:params:xml:ns:caldav"><d:response>'
+    f"<d:href>{PATH}</d:href><d:propstat><d:prop>"
+    "<d:resourcetype><d:collection/><cal:calendar/></d:resourcetype>"
+    "<d:displayname>Vakantie planning</d:displayname>"
+    "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>"
+    "</d:response></d:multistatus>"
+)
+
+
 @dataclass
 class FakeNextcloud:
     """Session cookies that override Basic auth, like Nextcloud."""
@@ -93,7 +106,12 @@ class FakeNextcloud:
             return web.Response(status=401)
         session_id = f"s{len(self.sessions) + 1}"
         self.sessions[session_id] = user
-        if request.method != "REPORT" or request.path != PATH or user != "bart":
+        if request.method == "PROPFIND" and request.path == PATH and user == "bart":
+            # Discovery with the calendar's own URL: it is a calendar.
+            resp = web.Response(
+                status=207, text=PROPFIND_CALENDAR, content_type="application/xml"
+            )
+        elif request.method != "REPORT" or request.path != PATH or user != "bart":
             resp = web.Response(status=404)
         else:
             resp = web.Response(
@@ -220,22 +238,29 @@ async def test_config_flow_corrected_username(
     )
     form = {
         CONF_NAME: "Vakantie",
-        CONF_CALDAV_URL: nextcloud.url,
+        CONF_CALDAV_SERVER: nextcloud.url,
         CONF_CALDAV_USERNAME: "bb",
         CONF_CALDAV_PASSWORD: USERS["bb"],
     }
     result = await hass.config_entries.flow.async_configure(result["flow_id"], form)
     assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "caldav_not_calendar"}
+    # bb can't see it: neither the URL nor .well-known gives a calendar.
+    assert result["errors"] == {"base": "caldav_no_calendars"}
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {**form, CONF_CALDAV_USERNAME: "bart", CONF_CALDAV_PASSWORD: USERS["bart"]},
     )
+    assert result["step_id"] == "caldav_calendar"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_CALDAV_CALENDAR: nextcloud.url}
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_CALDAV_USERNAME] == "bart"
+    assert result["data"][CONF_CALDAV_URL] == nextcloud.url
     await hass.async_block_till_done()
-    # Two validations plus the coordinator's first load: no cookie on any.
-    assert len(nextcloud.log) == 3
+    # bb: the URL and .well-known; bart: discovery, validation, then the
+    # coordinator's first load. No cookie on any of them.
+    assert len(nextcloud.log) == 5
     assert nextcloud.cookies_sent() == []
     assert await hass.config_entries.async_unload(result["result"].entry_id)
