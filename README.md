@@ -41,6 +41,11 @@ integration again.
   notification.
 * `list_events` only looks 7 days ahead unless you pass `duration` or
   `end`.
+* CalDAV setup says the URL is not a calendar (HTTP 404) though the calendar
+  exists: the username must be one that can see it, usually the owner named
+  in the URL (`.../calendars/<user>/...`). In 1.1.0 and earlier a wrong
+  username kept failing even after you corrected it, until Home Assistant
+  restarted (Nextcloud session cookies); update to 1.1.1 or later.
 
 ## Setup
 
