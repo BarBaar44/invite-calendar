@@ -9,15 +9,18 @@ things like a person, and Home Assistant knows about them.
 * Mirrors them into a local .ics file, or into a CalDAV calendar such as
   Nextcloud, which people can keep using directly.
 * Exposes them as a calendar entity.
-* Optionally accepts invitations (always, once they have a location, or
-  only when an automation says so) and asks organizers for a missing
-  location.
+* Optionally answers invitations: accept always, once they have a
+  location, or when the time is free (declining what clashes), or leave
+  accepting and declining to an automation. Can ask organizers for a
+  missing location.
 * Lets automations create, move and cancel events, recurring series and
   single occurrences included, with a proper invitation email.
 
 Works with a local .ics file or any CalDAV server (tested with Nextcloud
 35 and Radicale), and with any IMAP/SMTP mail server that allows custom
 IMAP keywords (Dovecot, mailcow and most others).
+
+<img src="https://raw.githubusercontent.com/BarBaar44/invite-calendar/main/docs/images/calendar-view.png" alt="A month of invitations in the Home Assistant calendar" width="720">
 
 ## Installation (HACS custom repository)
 
@@ -64,6 +67,9 @@ entry. Reconfigure does not move events to a new file or CalDAV calendar.
 1. **Mailbox**: IMAP server (implicit TLS, port 993), username, password
    (use an app password where your provider offers one), folder, and the
    processed keyword.
+
+   <img src="https://raw.githubusercontent.com/BarBaar44/invite-calendar/main/docs/images/setup-mailbox.png" alt="The mailbox step of the setup" width="420">
+
 2. **Store**: a local .ics file or a CalDAV calendar.
 3. **Calendar**, for an .ics file: name, and the file inside the
    configuration folder. Default `/config/invite_calendar/<mailbox>.ics`. An
@@ -75,6 +81,8 @@ entry. Reconfigure does not move events to a new file or CalDAV calendar.
    and task lists are not offered. A calendar's own URL also works as the
    server address. For Nextcloud, create the app password under Personal
    settings, Security, Devices & sessions.
+
+   <img src="https://raw.githubusercontent.com/BarBaar44/invite-calendar/main/docs/images/setup-caldav-picker.png" alt="Choosing one of the calendars found on the CalDAV server" width="420">
 
 ### A shared CalDAV calendar
 
@@ -102,6 +110,8 @@ Settings, Devices & services, Invite Calendar, the entry, **Configure**.
 
 Replies are sent as the mailbox address, so it must be an email address.
 Saving options that send mail tests the SMTP login first.
+
+<img src="https://raw.githubusercontent.com/BarBaar44/invite-calendar/main/docs/images/options-accept-policy.png" alt="The options, with the accept policies listed" width="420">
 
 ### If the time is free
 
@@ -206,6 +216,11 @@ skipped with a notification. In an .ics file, events that ended more than
 | `invite_calendar.cancel_event` | Cancel an event this calendar organizes, or with `recurrence_id` one occurrence of it. The cancellation is sent first; if it can't be sent, nothing changes. |
 
 All of them target the calendar entity.
+
+`list_events` in Developer tools, with an event made by hand (`managed:
+false`) and an accepted invitation:
+
+<img src="https://raw.githubusercontent.com/BarBaar44/invite-calendar/main/docs/images/list-events.png" alt="Calling list_events and its response" width="620">
 
 ### Events the calendar organizes
 
