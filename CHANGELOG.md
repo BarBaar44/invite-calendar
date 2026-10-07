@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1 (2026-10-07)
+
+* A setup dialog that was lost (browser refresh, closed tab) no longer
+  blocks setting up the same mailbox again until Home Assistant restarts.
+  Adding the same mailbox folder twice is still refused.
+* The `already_in_progress` reason now has a text instead of showing the
+  raw key.
+
 ## 1.2.0 (2026-10-07)
 
 * New action `decline_event`: decline an invitation, or with
