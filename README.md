@@ -24,11 +24,14 @@ IMAP keywords (Dovecot, mailcow and most others).
 
 ## Installation (HACS custom repository)
 
-1. HACS, three dots menu, **Custom repositories**.
-2. Repository `https://github.com/BarBaar44/invite-calendar`, type
-   **Integration**.
-3. Install **Invite Calendar**, restart Home Assistant.
-4. Settings, Devices & services, **Add integration**, Invite Calendar.
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=BarBaar44&repository=invite-calendar&category=integration)
+[![Add integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=invite_calendar)
+
+1. Click **Open in HACS** (or HACS, three dots menu, **Custom repositories**,
+   `https://github.com/BarBaar44/invite-calendar`, type **Integration**).
+2. Install **Invite Calendar**, restart Home Assistant.
+3. Click **Add integration** (or Settings, Devices & services, **Add
+   integration**, Invite Calendar).
 
 Entries made with 0.1.0 can't be upgraded: delete them and add the
 integration again.
